@@ -1,0 +1,33 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "fastdecov"
+version = "2.0.0"
+description = "Fast emitter discovery and deconvolution of photoluminescence spectrum maps (SpecSmartDecov V2)"
+readme = "README.md"
+license = { text = "MIT" }
+authors = [{ name = "arenasluo" }]
+requires-python = ">=3.10"
+dependencies = ["numpy>=1.24", "scipy>=1.10", "matplotlib>=3.7"]
+classifiers = ["Programming Language :: Python :: 3", "Programming Language :: C++", "Operating System :: POSIX :: Linux",
+               "Topic :: Scientific/Engineering :: Physics"]
+
+[project.optional-dependencies]
+gpu = ["cupy-cuda12x>=13", "nvidia-cuda-runtime-cu12", "nvidia-cuda-nvrtc-cu12"]
+test = ["pytest"]
+
+[project.scripts]
+fastdecov = "fastdecov.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/arenasluo/SpecSmartDecov_V2"
+"Original MATLAB code" = "https://github.com/arenasluo/SpecSmartDecov"
+
+[tool.setuptools]
+packages = ["fastdecov", "fastdecov.physics"]
+
+[tool.setuptools.package-data]
+fastdecov = ["native/*.cpp"]
+"fastdecov.physics" = ["*.json"]

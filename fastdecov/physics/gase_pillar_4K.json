@@ -1,0 +1,11 @@
+{
+ "name": "GaSe strained pillars/tents, cryo-PL (arXiv:2305.03230)",
+ "temperature_K": 3.5,
+ "instrument_resolution_meV": 3.25,
+ "strain_shift_halfrange_nm": 3.0,
+ "provenance": {
+  "temperature_K": "Supplementary Figs S5-S7: hyperspectral PL map of tent A measured at T = 3.5 K",
+  "instrument_resolution_meV": "Methods: Isoplane SCT-320, 150 g/mm grating, spectral resolution ~3.25 meV (600 g/mm ~300 ueV, 2400 g/mm ~30 ueV)",
+  "strain_shift_halfrange_nm": "Supplementary Fig. S6 (per-pixel peak wavelengths of the ten NMF lines over the 11x11 tent-A map): the dominant 694 nm line spans 694.6-696.2 nm (1.6 nm); weaker lines span 3-7 nm (partly noise). Half-range ~1-3 nm; 3.0 nm used as the per-line centre window. Main text: 'no spectral wandering' in PL."
+ }
+}
