@@ -126,3 +126,8 @@ pip install .[test] && pytest -q tests
 ## License
 
 MIT; see `LICENSE`.
+
+## Manuscript and benchmark results
+
+- `manuscript/`: the methodology manuscript (`.md`/`.docx`/`.pdf`), figures and the scripts that generate every number from verified metrics.
+- `results/`: outputs of the three fastest implementations (Go, Fortran, C++), the Python + C++ reference and the Octave/MATLAB baseline on Pillar 1 and Pillar 2: `dc` tables, `.tif` figures (Git LFS; run `git lfs pull`), emitter tables and parity reports. See `results/README.md` for the V3 metrics.
