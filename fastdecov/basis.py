@@ -64,6 +64,29 @@ def cosmic_keep(y, sigma):
     return keep
 
 
+def clip_keep(y, min_run=3, top=0.5):
+    """True = keep. Clipped (saturated or capped) peaks: runs of >= `min_run` exactly equal values in the upper part of
+    the spectrum (above median + `top` x (max - median)). Measured spectra never repeat a value over several pixels on
+    a peak, so such a plateau is not data. The plateau and one pixel on each side (the clipping edge) are masked."""
+    y = np.asarray(y)
+    keep = np.ones(y.size, bool)
+    med = float(np.median(y)); lo = med + top * (float(y.max()) - med)
+    i = 0
+    while i < y.size:
+        j = i
+        while j + 1 < y.size and y[j + 1] == y[i]:
+            j += 1
+        if j - i + 1 >= min_run and y[i] > lo:
+            keep[max(i - 1, 0):min(j + 2, y.size)] = False
+        i = j + 1
+    return keep
+
+
+def data_keep(y, sigma):
+    """Pixels used by the v2/v3 fits: not a cosmic ray and not part of a clipped peak."""
+    return cosmic_keep(y, sigma) & clip_keep(y)
+
+
 def _fit_one(x, y, p0, lb, ub, nbg, K):
     from . import lm_native
     P, S, _, _ = lm_native.fit_problems_k(x[None], y[None], np.zeros(1, int), p0[None], lb[None], ub[None],
@@ -75,13 +98,14 @@ def _fit_one(x, y, p0, lb, ub, nbg, K):
 def census_spectrum(x, y, opts=None):
     o = {**DEFAULTS, **(opts or {})}
     sigma = noise_sigma(y)
-    keep = cosmic_keep(y, sigma)
+    keep = data_keep(y, sigma)
     xm, ym = x[keep], y[keep]
     b0, b1 = model._edge_baseline(xm, ym)
     t = (xm - model.X_REF) / model.X_SCALE
     base = b0 + b1 * t
     peak = float((ym - base).max())
-    out = dict(sigma=sigma, peak=peak, n_masked=int((~keep).sum()), lines=[], emitting=peak >= o["emit_snr"] * sigma)
+    out = dict(sigma=sigma, peak=peak, n_masked=int((~keep).sum()), n_clipped=int((~clip_keep(y)).sum()),
+               lines=[], emitting=peak >= o["emit_snr"] * sigma)
     if not out["emitting"]:
         return out
     dx = float(np.median(np.diff(x)))
@@ -200,7 +224,7 @@ def discover_basis(xs, ys, opts=None, workers=None, verbose=True):
     grid_step = float(np.median([np.median(np.diff(x)) for x in xs]))
     cens = census(xs, ys, o, workers)
     emit = np.array([c["emitting"] for c in cens])
-    keeps = [cosmic_keep(y, c["sigma"]) for y, c in zip(ys, cens)]
+    keeps = [data_keep(y, c["sigma"]) for y, c in zip(ys, cens)]
     idx = np.flatnonzero(emit)
     folds = [idx[0::2], idx[1::2]]                 # interleaved halves of the map
     cand_f = [candidate_lines([cens[i] for i in f], grid_step, o) for f in folds]
@@ -289,7 +313,7 @@ def grow_basis(xs, ys, opts=None, workers=None, verbose=True):
     cens = census(xs, ys, o, workers)
     emit = np.flatnonzero([c["emitting"] for c in cens])
     sig = [c["sigma"] for c in cens]
-    keeps = [cosmic_keep(y, s) for y, s in zip(ys, sig)]
+    keeps = [data_keep(y, s) for y, s in zip(ys, sig)]
     F = [emit[0::3], emit[1::3], emit[2::3]]
     sub = lambda f: ([xs[i] for i in f], [ys[i] for i in f], [keeps[i] for i in f], [sig[i] for i in f])
     A, Bf, C = sub(F[0]), sub(F[1]), sub(F[2])
