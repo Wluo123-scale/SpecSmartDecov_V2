@@ -28,7 +28,7 @@ emitter? Nothing is fitted away: the fit is unchanged, the bumps are only classi
 """
 import numpy as np
 
-from . import basis as B, physics
+from . import physics
 
 HC = 1239.84193                      # eV nm
 MIN_SNR = 5.0
