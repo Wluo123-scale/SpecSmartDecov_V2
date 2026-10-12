@@ -24,7 +24,14 @@ from . import basis as B, emitter, lm_native, model, physics
 OPTS3 = dict(resolve=0.85, min_prev=0.03, min_share=0.02, accept_bic=10.0, spec_gain=10.0, tries=3, max_emitters=24,
              init_support=0.01, new_tol=physics.load()["strain_shift_halfrange_nm"], new_width_max=60.0, psb_r=(0.0, 1.0), psb_dd=(0.0, 6.0), psb_dw=(0.0, 15.0),
              starts=(8.0, 3.0), final_starts=("mid", 5.0, 2.0), psb_first=True,
-             width_mode="fit", distinct_r=None, dip_test=False, dip_sigma=3.0, dip_rel=0.02, dip_prev=0.03)
+             width_mode="fit", distinct_r=None, dip_test=False, dip_sigma=3.0, dip_rel=0.02, dip_prev=0.03,
+             pair_rule="narrow", width_ratio=2.0, mimic_r=0.8, bg_floor_sigma=3.0)
+# 2.2: pair_rule "narrow" - a narrow line next to a much broader one (width ratio >= width_ratio, e.g. GaSe band-edge
+# emission) is resolved if it is >= resolve x ITS OWN FWHM from the broad centre and the broad component's spatial map
+# does not just track it (share-map correlation < mimic_r; a pedestal that tracks a narrow line is how splitting fakes
+# Lorentzian wings). Similar-width pairs keep the 2.0 rule (resolve x mean FWHM). "mean" restores the 2.0 rule.
+# bg_floor_sigma: the linear background may not fall below -bg_floor_sigma x noise sigma anywhere in the window (None:
+# free, as in 2.0).
 
 
 class EmitterBasis:
@@ -129,10 +136,44 @@ def fit_set(xm, ym, b, starts, o, workers=None, idx=None):
         P, SS, _, _ = lm_native.fit_problems_zp(X, Y, np.array(SP), np.array(P0), np.array(LB), np.array(UB), b.psb,
                                                 threads=workers or 0)
         SS = np.where(np.isfinite(SS), SS, np.inf); SP = np.array(SP)
+        if o.get("bg_floor_sigma") is not None:
+            P, SS = _bg_floor(X, Y, SP, P, SS, np.array(LB), np.array(UB), b, o, workers)
         for j, m in enumerate(mem):
             c = np.flatnonzero(SP == j); k = c[np.argmin(SS[c])]
             params[m], sse[m] = P[k], SS[k]; start[m] = starts[k - c[0]]
     return Fit(b, params, sse, lengths.astype(float), start)
+
+
+def _bg_floor(X, Y, SP, P, SS, LB, UB, b, o, workers):
+    """Refit problems whose linear background b0 + b1 t falls below -f x sigma inside the window, with bounds that keep
+    it >= -f x sigma everywhere: b0 >= max(-f sigma, b0*) and b1 between the slopes that hit -f sigma at either end
+    (any b0 >= b0* only raises the background, so the region is feasible and the floor holds)."""
+    T = (X - model.X_REF) / model.X_SCALE
+    f = o["bg_floor_sigma"]
+    bad = []
+    for q in range(len(SP)):
+        t = T[SP[q]]; sg = B.noise_sigma(Y[SP[q]])
+        if min(P[q, 0] + P[q, 1] * t.min(), P[q, 0] + P[q, 1] * t.max()) < -f * sg:
+            bad.append((q, sg))
+    if not bad:
+        return P, SS
+    q_idx = [q for q, _ in bad]
+    P0 = P[q_idx].copy(); LB2 = LB[q_idx].copy(); UB2 = UB[q_idx].copy()
+    for i, (q, sg) in enumerate(bad):
+        t = T[SP[q]]; tlo, thi = float(t.min()), float(t.max()); floor = -f * sg
+        b0 = max(floor, float(P[q, 0]))
+        LB2[i, 0] = b0; UB2[i, 0] = max(UB2[i, 0], b0 + 1e-9)
+        lo1 = (floor - b0) / thi if thi > 0 else -np.inf     # b0 + b1*thi >= floor
+        hi1 = (floor - b0) / tlo if tlo < 0 else np.inf      # b0 + b1*tlo >= floor
+        LB2[i, 1] = max(LB2[i, 1], lo1); UB2[i, 1] = min(UB2[i, 1], hi1)
+        if LB2[i, 1] >= UB2[i, 1]:
+            LB2[i, 1] = UB2[i, 1] = 0.0; UB2[i, 1] = 1e-12
+        P0[i, 0] = b0 + 1e-9 * max(1.0, abs(b0)); P0[i, 1] = min(max(0.0, LB2[i, 1]), UB2[i, 1])
+        bnd = (P0[i] <= LB2[i]) | (P0[i] >= UB2[i]); P0[i, bnd] = 0.5 * (LB2[i, bnd] + UB2[i, bnd])
+    P2, S2, _, _ = lm_native.fit_problems_zp(X, Y, SP[q_idx], P0, LB2, UB2, b.psb, threads=workers or 0)
+    P = P.copy(); SS = SS.copy()
+    P[q_idx] = P2; SS[q_idx] = np.where(np.isfinite(S2), S2, np.inf)
+    return P, SS
 
 
 def share_corr(fit, i, j):
@@ -174,6 +215,14 @@ def resolved_in_data(xd, yd, sig, c1, c2, keep=None):
 OPTS_RUNTIME = dict(OPTS3)
 
 
+def pair_unresolved(sep, w1, w2, corr, o):
+    """True if two lines (centre separation sep, FWHMs w1, w2) count as one feature (see OPTS3 pair_rule)."""
+    wn, wb = min(w1, w2), max(w1, w2)
+    if o.get("pair_rule", "mean") == "narrow" and wb >= o["width_ratio"] * wn:
+        return sep < o["resolve"] * wn or (sep < o["resolve"] * 0.5 * (w1 + w2) and corr() >= o["mimic_r"])
+    return sep < o["resolve"] * 0.5 * (w1 + w2)
+
+
 def unresolved(fit, R, wfun=None, distinct_r=None, data=None):
     """Adjacent emitter pairs closer than R x reference width that are not spatially distinct.
 
@@ -183,10 +232,12 @@ def unresolved(fit, R, wfun=None, distinct_r=None, data=None):
     b = fit.b; out = []
     for j in range(b.K - 1):
         c1, c2 = fit.med(0, j), fit.med(0, j + 1)
-        w = 0.5 * (fit.med(2, j) + fit.med(2, j + 1))
+        w1, w2 = fit.med(2, j), fit.med(2, j + 1)
         if wfun is not None:
-            w = min(w, wfun(c1, fit.med(2, j)), wfun(c2, fit.med(2, j + 1)))
-        if c2 - c1 < R * w and not (distinct_r is not None and abs(share_corr(fit, j, j + 1)) < distinct_r):
+            w1, w2 = min(w1, wfun(c1, w1)), min(w2, wfun(c2, w2))
+        o = {**OPTS_RUNTIME, "resolve": R}
+        if pair_unresolved(c2 - c1, w1, w2, lambda: share_corr(fit, j, j + 1), o) and \
+                not (distinct_r is not None and abs(share_corr(fit, j, j + 1)) < distinct_r):
             if data is not None:                    # V3.2: separate if the data themselves resolve the pair
                 xd, yd, sg = data
                 if resolved_in_data(xd, yd, sg, fit.tab[:, j, 0], fit.tab[:, j + 1, 0]) >= OPTS_RUNTIME["dip_prev"]:
@@ -265,6 +316,10 @@ def grow(xs, ys, opts=None, workers=None, verbose=False):
                 if red:
                     moves.append(("psb", b.with_psb(min(red, key=lambda k: c - cen[k]))))
             wj = min(wid[j], WF(cen[j], wid[j]), WF(c, wid[j])) if (b.K and WF) else (wid[j] if b.K else 0.0)
+            if b.K and o.get("pair_rule", "mean") == "narrow":
+                wc = wfun(c, wmin)                   # census width of the candidate line
+                if max(wc, wj) >= o["width_ratio"] * min(wc, wj):
+                    wj = min(wc, wj)                 # very different widths: judged by the narrower (checked after fit)
             if b.K == 0 or abs(c - cen[j]) >= o["resolve"] * wj:
                 moves.append(("add", b.with_emitter(c, o["new_tol"], wmin, o["new_width_max"])))
             else:

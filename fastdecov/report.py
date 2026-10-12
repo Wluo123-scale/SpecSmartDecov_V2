@@ -13,7 +13,11 @@ from . import basis as B, emitter, grid as G, legacy, physics
 # Ranking for single-photon (g2) follow-up. nu and the sideband ZPL fraction are reported, not used as gates: at
 # 150 g/mm the antibunched ~692 nm emitter of the reference study (g2(0) = 0.43) looks Gaussian-dominated, because the
 # exciton/biexciton structure is unresolved and spectral diffusion adds Gaussian broadening.
-RANK = dict(strong_snr=50.0, share_for_nu=0.10, sharp_x_instrument=3.0, isolated_x_fwhm=1.5, sampling_px=2.5)
+RANK = dict(strong_snr=50.0, share_for_nu=0.10, sharp_x_instrument=3.0, isolated_x_fwhm=1.5, sampling_px=2.5,
+            broad_x_instrument=5.0)
+# Components wider than broad_x_instrument x the instrument FWHM are reported as "broad" (e.g. GaSe band-edge emission
+# or an unresolved ensemble),
+# not as single-emitter lines; they are fitted like any other component but are never g2 candidates.
 PASS = dict(rms_peak=0.025, rms_sigma=2.0, max_peak=0.12, max_sigma=8.0)
 # Per-pixel residual limit |r| <= max(floor, k_sqrt * sqrt(y)): an absolute floor for the baseline and weak lines, and a
 # shot-noise-like allowance that grows with the signal (with counts ~ detected photons, sqrt(y) is the Poisson noise).
@@ -85,7 +89,8 @@ def ranking(res, phys):
                  huang_rhys_implied=implied_huang_rhys(zf) if res.psb[k] else None,
                  strong=bool(snr[:, k].max() >= RANK["strong_snr"]), isolated=bool(isolated),
                  sharp=bool(w <= RANK["sharp_x_instrument"] * inst), nu_reliable=bool(w >= RANK["sampling_px"] * step))
-        r["g2_priority"] = r["strong"] and r["isolated"] and r["sharp"]
+        r["kind"] = "broad" if w > RANK["broad_x_instrument"] * inst else "emitter line"
+        r["g2_priority"] = r["strong"] and r["isolated"] and r["sharp"] and r["kind"] == "emitter line"
         rows.append(r)
     return rows
 
@@ -162,11 +167,13 @@ def ranking_markdown(name, res, rows, phys):
          f"AND isolated (no emitter within {RANK['isolated_x_fwhm']} x FWHM) AND sharp (FWHM <= {RANK['sharp_x_instrument']:.0f} x "
          "instrument FWHM). nu and the sideband ZPL fraction are informative only; confirmation needs g2(0) < 0.5 or a "
          "high-resolution spectrum. Implied S = -ln(ZPL fraction) is the Huang-Rhys factor for single-mode linear coupling "
-         "at low temperature: a model-dependent estimate (Gaussian sideband area; an unresolved neighbour would raise it).", "",
-         "| # | ZPL centre (nm) | median ν | FWHM (nm) | FWHM / instrument | max SNR | spectra ≥10 % | sideband (ZPL fraction) | implied S | strong | isolated | sharp | **g² priority** |",
-         "|---|---|---|---|---|---|---|---|---|---|---|---|---|"]
+         "at low temperature: a model-dependent estimate (Gaussian sideband area; an unresolved neighbour would raise it). "
+         f"type 'broad': FWHM > {RANK['broad_x_instrument']:g} x instrument, e.g. GaSe band-edge emission or an unresolved ensemble; fitted, "
+         "never a g2 candidate.", "",
+         "| # | ZPL centre (nm) | type | median ν | FWHM (nm) | FWHM / instrument | max SNR | spectra ≥10 % | sideband (ZPL fraction) | implied S | strong | isolated | sharp | **g² priority** |",
+         "|---|---|---|---|---|---|---|---|---|---|---|---|---|---|"]
     for r in rows:
-        L.append(f"| {r['emitter']} | {r['center_nm']} | {r['nu_median']} | {r['fwhm_nm']} | {r['fwhm_over_instrument']} | {r['max_snr']} | "
+        L.append(f"| {r['emitter']} | {r['center_nm']} | {r['kind']} | {r['nu_median']} | {r['fwhm_nm']} | {r['fwhm_over_instrument']} | {r['max_snr']} | "
                  f"{r['spectra_with_share_ge_10pct']} | {('yes (' + str(r['zpl_fraction']) + ')') if r['phonon_sideband'] else '–'} | "
                  f"{r['huang_rhys_implied'] if r['huang_rhys_implied'] is not None else '–'} | "
                  f"{yn(r['strong'])} | {yn(r['isolated'])} | {yn(r['sharp'])} | **{'YES' if r['g2_priority'] else 'no'}** |")
