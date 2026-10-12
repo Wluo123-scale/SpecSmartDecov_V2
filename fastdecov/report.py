@@ -90,9 +90,22 @@ def ranking(res, phys):
     return rows
 
 
-def quality(res, limit=None, snr_classes=None):
+def per_spectrum(res, limit=None, snr_classes=None):
+    """Per-spectrum checks shared by quality() and save(), computed once: residual limit (max |r|, ratio, pass), peak
+    SNR, peak height, spectrum class and clipped-pixel count."""
+    limit = tuple(limit or (RESIDUAL_LIMIT["floor"], RESIDUAL_LIMIT["k_sqrt"]))
+    bounds = tuple(snr_classes or SNR_CLASSES)
+    mx, ratio, rok = residual_check(res, *limit)
+    psnr, height = peak_snr(res)
+    clipped = np.array([0 if res.method == "legacy" else int((~B.clip_keep(y)).sum()) for y in res.ys])
+    return dict(limit=limit, bounds=bounds, mx=mx, ratio=ratio, rok=rok, psnr=psnr, height=height,
+                cls=classify(psnr, bounds), clipped=clipped)
+
+
+def quality(res, limit=None, snr_classes=None, ps=None):
     """Residual pass rate (RMS <= max(2.5 % peak, 2 sigma), max <= max(12 % peak, 8 sigma)), reduced chi^2, and the
-    per-pixel residual limit check (see residual_check); limit = (floor, k_sqrt), default RESIDUAL_LIMIT."""
+    per-pixel residual limit check (see residual_check); limit = (floor, k_sqrt), default RESIDUAL_LIMIT.
+    ps: per_spectrum() results, if already computed."""
     ok, rch = [], []
     for s in range(len(res.ids)):
         x, y, k = res.xs[s], res.ys[s], res.keeps[s]
@@ -101,10 +114,9 @@ def quality(res, limit=None, snr_classes=None):
         ok.append(bool(np.sqrt(np.mean(r ** 2)) <= max(PASS["rms_peak"] * pk, PASS["rms_sigma"] * sg) and
                        np.abs(r).max() <= max(PASS["max_peak"] * pk, PASS["max_sigma"] * sg)))
         rch.append(float(r @ r / max(n - res.params.shape[1], 1) / sg ** 2))
-    floor, k_sqrt = limit or (RESIDUAL_LIMIT["floor"], RESIDUAL_LIMIT["k_sqrt"])
-    mx, ratio, rok = residual_check(res, floor, k_sqrt)
-    bounds = tuple(snr_classes or SNR_CLASSES)
-    snr, _ = peak_snr(res); cls = classify(snr, bounds); okv = np.array(ok)
+    ps = ps or per_spectrum(res, limit, snr_classes)
+    (floor, k_sqrt), bounds = ps["limit"], ps["bounds"]
+    mx, ratio, rok, cls = ps["mx"], ps["ratio"], ps["rok"], ps["cls"]; okv = np.array(ok)
     by_class = {}
     for c, nm in enumerate(CLASS_NAMES):
         m = cls == c
@@ -118,7 +130,7 @@ def quality(res, limit=None, snr_classes=None):
                                     max_abs_residual_median=float(np.median(mx)), max_abs_residual_max=float(mx.max()),
                                     worst=[dict(spectrum_id=res.ids[i], ratio=round(float(ratio[i]), 3),
                                                 max_abs_residual=round(float(mx[i]), 1)) for i in worst if not rok[i]]),
-                clipped_spectra=int(sum(not B.clip_keep(y).all() for y in res.ys)),
+                clipped_spectra=int(np.sum(ps["clipped"] > 0)),
                 snr_classes=dict(bounds=list(bounds), rule="peak SNR < %g substrate, < %g weak, else emitter" % bounds,
                                  by_class=by_class))
 
@@ -175,11 +187,12 @@ def figure(path, sid, x, y, keep, p, psb, formats=("tif",), limit=None):
         if psb[k]:
             ax[0].plot(x, bg + sb[k], lw=0.9, ls="--", color=line.get_color())
     ax[0].set_xlim(x[0], x[-1]); ax[0].set_xlabel("Wavelength (nm)"); ax[0].set_ylabel("Intensity")
-    ax[0].set_title(f"{sid}.txt  (dashed: phonon sidebands)"); ax[0].legend(fontsize=6, ncol=2)
-    r = (tot - y)[keep]
-    ax[1].plot(x[keep], r, "o", ms=2.5, mfc="none", color="b"); ax[1].axhline(0, color="k", lw=0.8)
+    ax[0].set_title(f"{sid}.txt  (dashed: phonon sidebands)")
     if (~keep).any():
         ax[0].plot(x[~keep], y[~keep], "x", color="k", ms=4, label="masked")
+    ax[0].legend(fontsize=6, ncol=2)                     # after every labelled artist, including the masked points
+    r = (tot - y)[keep]
+    ax[1].plot(x[keep], r, "o", ms=2.5, mfc="none", color="b"); ax[1].axhline(0, color="k", lw=0.8)
     if limit:
         lim = residual_limit(y, *limit)
         ax[1].plot(x, lim, "--", color="g", lw=0.8); ax[1].plot(x, -lim, "--", color="g", lw=0.8,
@@ -241,9 +254,9 @@ def save(res, out, name=None, phys=None, figures=False, formats=("tif",), grid=N
         grid = G.fixed(*grid)
     if isinstance(grid, dict) and not grid.get("rows"):
         grid = None
-    mx, ratio, rok = residual_check(res, *limit)
-    bounds = tuple(snr_classes or SNR_CLASSES)
-    psnr, height = peak_snr(res); cls = classify(psnr, bounds)
+    ps = per_spectrum(res, limit, snr_classes)
+    bounds = ps["bounds"]
+    mx, ratio, rok, psnr, height, cls = ps["mx"], ps["ratio"], ps["rok"], ps["psnr"], ps["height"], ps["cls"]
     out = Path(out); (out / "dc").mkdir(parents=True, exist_ok=True)
     name = name or out.name
     for s, sid in enumerate(res.ids):
@@ -262,12 +275,12 @@ def save(res, out, name=None, phys=None, figures=False, formats=("tif",), grid=N
                  "max_abs_residual\tresidual_limit_ratio\tresidual_ok\tpeak_counts\tpeak_snr\tspectrum_class\n")
         for s, sid in enumerate(res.ids):
             fh.write(f"{sid}\t{res.sse[s]:.10g}\t{res.params[s, 0]:.10g}\t{res.params[s, 1] / 100.0:.10g}\t"
-                     f"{int((~res.keeps[s]).sum())}\t{int((~B.clip_keep(res.ys[s])).sum()) if res.method != 'legacy' else 0}\t"
+                     f"{int((~res.keeps[s]).sum())}\t{ps['clipped'][s]}\t"
                      f"{mx[s]:.6g}\t{ratio[s]:.4f}\t{int(rok[s])}\t{height[s]:.6g}\t{psnr[s]:.4g}\t{CLASS_NAMES[cls[s]]}\n")
     (out / "basis.json").write_text(json.dumps(dict(method=res.method, K=res.K, psb=[int(v) for v in res.psb],
                                                     centers=[round(res.median(0, k), 4) for k in range(res.K)],
                                                     **res.extra), indent=1, default=float) + "\n")
-    rows = ranking(res, phys); q = quality(res, limit, bounds)
+    rows = ranking(res, phys); q = quality(res, ps=ps)
     (out / "emitter_report.json").write_text(json.dumps(dict(map=name, method=res.method, criteria=RANK, physics=phys,
                                                              fit_quality=q, emitters=rows), indent=1, default=float) + "\n")
     (out / "emitter_report.md").write_text(ranking_markdown(name, res, rows, phys) +

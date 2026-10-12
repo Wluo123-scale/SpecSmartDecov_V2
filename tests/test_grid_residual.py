@@ -104,3 +104,25 @@ def test_snr_classes_in_outputs(tmp_path):
 def test_implied_huang_rhys():
     assert report.implied_huang_rhys(np.exp(-1.5)) == 1.5
     assert report.implied_huang_rhys(1.0) is None and report.implied_huang_rhys(0.0) is None and report.implied_huang_rhys(None) is None
+
+
+def test_pair_option_error_is_generic(tmp_path):
+    d = make_map(tmp_path)
+    r = subprocess.run([sys.executable, "-m", "fastdecov", "fit", str(d), str(tmp_path / "o"), "--snr-classes", "abc"],
+                       capture_output=True, text=True)
+    assert r.returncode != 0 and "two comma-separated numbers" in r.stderr and "residual limit" not in r.stderr
+
+
+def test_figure_legend_lists_masked_points(tmp_path, monkeypatch):
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    seen = {}
+    real_close = plt.close
+    def close(fig):
+        seen["labels"] = [t.get_text() for t in fig.axes[0].get_legend().get_texts()]
+        real_close(fig)
+    monkeypatch.setattr(plt, "close", close)
+    x = np.linspace(600, 700, 200); y = 1000 * np.exp(-((x - 650) / 3) ** 2); keep = np.ones(200, bool); keep[100:103] = False
+    report.figure(tmp_path / "f", "s1", x, y, keep, np.array([0.0, 0.0, 1000.0, 650.0, 0.5, 4.0]), [0], ("png",), (100, 3))
+    assert "masked" in seen["labels"]

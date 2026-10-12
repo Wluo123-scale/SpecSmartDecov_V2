@@ -29,11 +29,12 @@ def _grid(s):
 
 
 def _limit(s):
+    """Two comma-separated numbers (used by --residual-limit FLOOR,K and --snr-classes LOW,HIGH)."""
     try:
         floor, k = (float(v) for v in s.split(","))
         return floor, k
     except Exception:
-        raise argparse.ArgumentTypeError("residual limit must look like 100,3 (|r| <= max(100, 3 sqrt(y)))")
+        raise argparse.ArgumentTypeError(f"expected two comma-separated numbers such as 100,3, got {s!r}")
 
 
 def cmd_fit(a):
