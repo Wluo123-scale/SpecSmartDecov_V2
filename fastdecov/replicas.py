@@ -59,7 +59,7 @@ def _bumps(res, s, phys):
     tab = res.table[s]
     out = []
     for i, w0 in zip(pk, widths):
-        c0 = float(x[i]); inst = physics.instrument_fwhm_nm(c0, PHYS)
+        c0 = float(x[i]); inst = physics.instrument_fwhm_nm(c0, phys)
         if w0 < TEST["width_x_instrument"] * inst:
             continue
         if masked.size and np.min(np.abs(masked - i)) <= TEST["mask_gap_px"]:
