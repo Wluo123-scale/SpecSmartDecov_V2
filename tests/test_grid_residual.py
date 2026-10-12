@@ -126,3 +126,30 @@ def test_figure_legend_lists_masked_points(tmp_path, monkeypatch):
     x = np.linspace(600, 700, 200); y = 1000 * np.exp(-((x - 650) / 3) ** 2); keep = np.ones(200, bool); keep[100:103] = False
     report.figure(tmp_path / "f", "s1", x, y, keep, np.array([0.0, 0.0, 1000.0, 650.0, 0.5, 4.0]), [0], ("png",), (100, 3))
     assert "masked" in seen["labels"]
+
+
+def test_pair_rule_narrow_on_broad():
+    from fastdecov import basis3
+    o = dict(basis3.OPTS3)
+    corr_low, corr_high = (lambda: 0.1), (lambda: 0.95)
+    # narrow 4 nm line 5 nm from a 25 nm band: resolved under the narrow rule unless the band's map tracks the line
+    assert not basis3.pair_unresolved(5.0, 4.0, 25.0, corr_low, o)
+    assert basis3.pair_unresolved(5.0, 4.0, 25.0, corr_high, o)          # pedestal that mimics Lorentzian wings
+    assert basis3.pair_unresolved(2.0, 4.0, 25.0, corr_low, o)           # closer than 0.85 x the narrow FWHM
+    assert basis3.pair_unresolved(5.0, 4.0, 25.0, corr_low, {**o, "pair_rule": "mean"})   # 2.1 rule
+    # similar widths: unchanged 2.1 rule (0.85 x mean FWHM)
+    assert basis3.pair_unresolved(3.0, 4.0, 4.5, corr_low, o) and not basis3.pair_unresolved(4.0, 4.0, 4.5, corr_low, o)
+
+
+def test_background_floor():
+    """A strong line's tail must not be absorbed by a background that dips below -3 sigma."""
+    from fastdecov import basis3, emitter, model
+    rng = np.random.default_rng(5); x = np.linspace(550, 800, 500)
+    p = np.array([0.0, 0.0, 20000.0, 760.0, 0.1, 8.0, 300.0, 600.0, 0.5, 6.0])
+    y = emitter.evaluate(p, x, [0, 0]) + rng.normal(0, 5, x.size)
+    b = basis3.EmitterBasis([600.0, 760.0], [597.0, 757.0], [603.0, 763.0], [1.0, 1.0], [20.0, 20.0])
+    for floor in (3.0, None):
+        f = basis3.fit_set([x], [y], b, ("mid", 5.0), {**basis3.OPTS3, "bg_floor_sigma": floor})
+        t = (x - model.X_REF) / model.X_SCALE; bg = f.params[0, 0] + f.params[0, 1] * t
+        if floor:
+            assert bg.min() >= -3.0 * 5.0 * 1.2, bg.min()

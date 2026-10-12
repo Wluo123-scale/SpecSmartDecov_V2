@@ -16,7 +16,7 @@ fastdecov fit path/to/spectra out/ --figures            # map shape is detected 
 
 | `--method` | Model | Use it for |
 |---|---|---|
-| **`v3`** (default) | **Physical emitters:** each one is a zero-phonon line (pseudo-Voigt), optionally with a phonon sideband tied to it on the red side. A shoulder within one linewidth of an emitter can only become its sideband, never a new line. Lines closer than 0.85 × FWHM are not allowed. | Single-photon-emitter work: one emitter stays one line, so ν (0 = Lorentzian, 1 = Gaussian) and the linewidth keep their meaning. |
+| **`v3`** (default) | **Physical emitters:** each one is a zero-phonon line (pseudo-Voigt), optionally with a phonon sideband tied to it on the red side. A shoulder within one linewidth of an emitter can only become its sideband, never a new line. Lines of similar width closer than 0.85 × their mean FWHM are not allowed. A narrow line on top of a much broader component (for example GaSe band-edge emission) is allowed when it is 0.85 × its own FWHM away; see [Broad components](#broad-components-and-the-background). | Single-photon-emitter work: one emitter stays one line, so ν (0 = Lorentzian, 1 = Gaussian) and the linewidth keep their meaning. |
 | `v2` | Data-driven basis of pseudo-Voigt lines, grown by held-out BIC (no anchors). | The best phenomenological fit. It can split one emitter into several unresolved lines. |
 | `legacy` | The original SpecSmartDecov model: 12 fixed anchors (611 … 724 nm), constant background. | Compatibility with old `dc` results. |
 
@@ -128,9 +128,41 @@ The bounds can be set with `--snr-classes LOW,HIGH`. Fit quality and the residua
 |---|---|---|---|
 | Tent map (pillar 6, 121) | – | 39 spectra: 51 % / 56 % | 82 spectra: 95 % / 41 % |
 | Pillar 9 crop (315) | – | 24: 62 % / 42 % | 291: 75 % / 1 % |
-| Pillar 9 full (900) | 93: 94 % / 100 % | 446: 55 % / 72 % | 361: 72 % / 1 % |
+| Pillar 9 full (900) | 93: 94 % / 100 % | 446: 63 % / 77 % | 361: 96 % / 4 % |
 
 On the emitter spectra of pillar 9, the typical max |r| is about 550 counts on peaks of 4,000–13,000 counts, a 4–6 % line-shape error at the peak. That, and not the substrate, is what the residual limit exposes.
+
+## Broad components and the background
+
+**Broad components.** Some features are much broader than the instrument (FWHM 9–30 nm against about 1 nm), for example GaSe band-edge emission around 600–650 nm. They are real and are fitted.
+- **How they are reported.** A component wider than 5 × the instrument FWHM is labelled **broad** in the emitter table, with the note "e.g. GaSe band-edge emission or an unresolved ensemble". It is never a g² candidate.
+- **The 2.0/2.1 problem.** Resolvability used 0.85 × the *mean* FWHM of a pair, so a 26 nm band created a ±12 nm exclusion zone. Narrow emitters on top of it could not be added, and V3 covered whole bands with a few broad blobs.
+- **The 2.2 rule.** For a pair whose widths differ by at least 2×, the narrow line is resolved if it is at least 0.85 × *its own* FWHM from the broad centre. One guard remains: the broad component's spatial map must not simply track the narrow line (share-map correlation < 0.8). A pedestal that tracks a narrow line is how splitting fakes Lorentzian wings, while a real band has its own spatial distribution.
+- **Similar-width pairs** keep the 0.85 × mean-FWHM rule.
+
+**Background floor.** The linear background may not drop below −3 noise σ anywhere in the window, so the tails of strong lines must be explained by the lines and not by a tilted background. Fits that violate the floor are refitted with bounds that guarantee it.
+
+`basis3.OPTS3`: `pair_rule="mean"` and `bg_floor_sigma=None` restore the 2.1 behaviour.
+
+**Held-out synthetic maps** (12 maps with known emitters, the set used to freeze V3):
+
+| | 2.1 rules | 2.2 rules |
+|---|---|---|
+| splits per map (lower is better) | 0.33 | **0.17** |
+| precision | 0.914 | **0.924** |
+| recall | 0.852 | **0.886** |
+| close-cluster recall | 0.49 | **0.56** |
+| ν class accuracy | 0.826 | **0.854** |
+| fit pass rate | 0.865 | **0.931** |
+| sideband recall | 0.58 | **0.67** |
+| false-sideband rate (lower is better) | **0.29** | 0.33 |
+
+**Real maps:**
+- **Full pillar-9 map.** A narrow 683.6 nm line is now resolved on top of a broad 680 nm feature, and the broad filler component under 710/718/725 nm is gone. The emitter-class fit pass rate rises from 72 % to 96 %.
+- **Tent map.** The 600–650 nm band gains a resolved 628/635 nm structure on top of the band-edge components. 695.35 nm stays the only g²-priority emitter.
+- **Pillar-9 crop.** Unchanged.
+
+**Still unmodelled:** a weak bump at about 706–710 nm on the red tail of the tent map's 695 nm line, about 30 meV below it. It may be an optical-phonon replica or a weak separate emitter, and it is left as residual on purpose.
 
 ## Local emitters (experimental)
 
@@ -171,10 +203,12 @@ For another sample or spectrometer, run `fastdecov physics --template my.json`, 
 
 ## Validation and limits
 
-- **Synthetic validation.** V3's rules were tuned and then frozen on synthetic maps with known emitters. On held-out maps, V3 compared with V2:
+- **Synthetic validation.** V3's rules were tuned and then frozen on synthetic maps with known emitters. On held-out maps, V3 2.0 compared with V2:
   - splits per map: 0.33 against 2.08;
   - precision: 0.91 against 0.73;
   - correct ν class: 0.83 against 0.77.
+
+  The 2.2 resolvability rule improves these further, to 0.17 splits per map, 0.92 precision and 0.85 correct ν class; see [Broad components](#broad-components-and-the-background).
 - **Dense clusters.** Emitters closer together than their linewidth cannot be resolved at 150 g/mm. V3 then reports fewer, broader emitters and leaves structured residuals: the 700–730 nm band of the reference pillar-9 map has a pass rate of 0.74. V2 fits these clusters better, but its extra lines are not physical emitters.
 - **Sideband shape.** The sideband is modelled as a Gaussian, while real acoustic sidebands are skewed.
 - **Residual limit.** Most spectra that fail max(100, 3√y) fail on line shape or dense clusters, not on missing emitters (see [Residual limit](#residual-limit)).
