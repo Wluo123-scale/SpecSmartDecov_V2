@@ -4,7 +4,7 @@
     m = api.load_map("path/to/spectra")                      # directory of <id>.txt (wavelength nm, intensity)
     res = api.fit_map(m, method="v3", threads=8)             # "v3" (default), "v2" or "legacy"
     print(res.K, res.psb, [res.median(0, k) for k in range(res.K)])
-    api.save(res, "out_dir", figures=True, grid=(11, 11))    # dc tables, emitters.tsv, report, maps, .tif figures
+    api.save(res, "out_dir", figures=True, grid="auto")      # dc tables, emitters.tsv, report, maps, .tif figures
 
 Methods
   v3      physical emitters: zero-phonon line (pseudo-Voigt) + optional tied red phonon sideband; the number of
@@ -18,7 +18,7 @@ from pathlib import Path
 
 import numpy as np
 
-from . import basis as B, basis3, emitter, model, physics, report
+from . import basis as B, basis3, emitter, grid as G, model, physics, report
 
 METHODS = ("v3", "v2", "legacy")
 
@@ -76,8 +76,11 @@ class Result:
         return emitter.evaluate(self.params[s], self.xs[s], self.psb, parts=parts)
 
 
-def fit_map(m, method="v3", phys=None, threads=None, verbose=False, **opts):
-    """Discover the emitters/basis of a map and fit every spectrum. `phys`: dict or path of a physics JSON."""
+def fit_map(m, method="v3", phys=None, threads=None, verbose=False, local=False, grid="auto", **opts):
+    """Discover the emitters/basis of a map and fit every spectrum. `phys`: dict or path of a physics JSON.
+    v3 only, experimental: local=True adds emitters confined to a small connected patch of the map
+    (basis3.local_emitters); `grid`
+    ("auto", None, (rows, cols[, serpentine]) or a detect_grid dict) defines which spectra are neighbours."""
     if method not in METHODS:
         raise ValueError(f"method must be one of {METHODS}")
     phys = phys if isinstance(phys, dict) else physics.load(phys)
@@ -86,15 +89,21 @@ def fit_map(m, method="v3", phys=None, threads=None, verbose=False, **opts):
     if method == "v3":
         o = dict(new_tol=phys["strain_shift_halfrange_nm"], **opts)
         b, fit, rep, keeps = basis3.grow(xs, ys, o, workers=threads, verbose=verbose)
+        added = []
+        if local:
+            g = G.detect(m.ids, xs, ys) if grid == "auto" else (G.fixed(*grid) if isinstance(grid, (tuple, list)) else grid)
+            oo = {**B.DEFAULTS, **B.GROW_DEFAULTS, **basis3.OPTS3, **o}
+            b, fit, added = basis3.local_emitters(xs, ys, keeps, b, fit, oo, phys, g, workers=threads, verbose=verbose)
         hist = [{k: v for k, v in h.items() if k in ("step", "center", "K")} for h in rep["history"]]
         extra = dict(center_lo=b.lo.tolist(), center_hi=b.hi.tolist(), width_min=b.wmin.tolist(), width_max=b.wmax.tolist(),
                      history=hist, heldout_bic_C=rep["heldout_bic_C"], n_emitting=rep["n_emitting"],
-                     best_start=[str(v) for v in fit.start])
+                     best_start=[str(v) for v in fit.start], local_emitters=added,
+                     local=[bool(v) for v in b.local])
         return Result("v3", list(m.ids), xs, ys, keeps, fit.params, fit.sse, b.psb.copy(), extra)
     if method == "v2":
         from . import pipeline
         b, rep = B.grow_basis(xs, ys, opts or None, workers=threads, verbose=verbose)
-        keeps = [B.cosmic_keep(y, B.noise_sigma(y)) for y in ys]
+        keeps = [B.data_keep(y, B.noise_sigma(y)) for y in ys]
         r = pipeline.fit_spectra_basis(m.ids, [x[k] for x, k in zip(xs, keeps)], [y[k] for y, k in zip(ys, keeps)], b,
                                        workers=threads, starts=("mid", 8.0, 5.0))
         extra = dict(center_lo=b.center_lo.tolist(), center_hi=b.center_hi.tolist(), history=rep["history"],
@@ -109,7 +118,17 @@ def fit_map(m, method="v3", phys=None, threads=None, verbose=False, **opts):
                   dict(anchors_nm=model.ANCHORS_NM.tolist(), engine=engine))
 
 
-def save(res, out, name=None, phys=None, figures=False, formats=("tif",), grid=None, threads=None):
-    """Write dc/dc_<id>.txt, emitters.tsv, spectra.tsv, basis.json, emitter_report.{md,json}, optional maps/figures."""
+def detect_grid(m):
+    """Map shape from file names or spatial continuity (see fastdecov.grid); dict with rows=None if not detected."""
+    return G.detect(m.ids, m.xs, m.ys)
+
+
+def save(res, out, name=None, phys=None, figures=False, formats=("tif",), grid=None, threads=None, residual_limit=None,
+         snr_classes=None):
+    """Write dc/dc_<id>.txt, emitters.tsv, spectra.tsv, basis.json, emitter_report.{md,json}, optional maps/figures.
+    grid: None, "auto", (rows, cols[, serpentine]) or a dict from detect_grid. residual_limit: (floor, k), default (100, 3)."""
     phys = phys if isinstance(phys, dict) else physics.load(phys)
-    return report.save(res, out, name, phys, figures, formats, grid, threads or len(os.sched_getaffinity(0)))
+    if isinstance(grid, str) and grid == "auto":
+        grid = G.detect(res.ids, res.xs, res.ys)
+    return report.save(res, out, name, phys, figures, formats, grid, threads or len(os.sched_getaffinity(0)), residual_limit,
+                       snr_classes)
