@@ -76,6 +76,7 @@ out["ranking"], out["quality"]                            # emitter ranking and 
 | `basis.json` | discovered emitters, sideband flags, centre windows, discovery history, held-out BIC |
 | `emitter_report.md` / `.json` | emitter ranking (below), fit quality and the residual-limit summary |
 | `emitter_maps.png` | per-emitter area maps (when a grid is known) |
+| `shortlist.md` / `.json` | **follow-up shortlist**: lines to re-measure with a higher grating, where (best pixels) and over which window; see [Follow-up shortlist](#follow-up-shortlist) |
 | `residual_features.json` / `.png` | recurring residual bumps classified against the map (phonon replica / possible separate emitter / unclassified) and where they occur |
 | `snr_map.png` | peak-SNR map and the substrate / weak / emitter classes (when a grid is known) |
 | `run.json` | version, settings, physics, detected grid (with its confidence and candidates), timings |
@@ -192,6 +193,48 @@ The presence test is meaningful only if the emitter is absent somewhere. When th
   The user confirmed this assignment from the map.
 - **Pillar 9.** Recurring bumps at about 600–630, 673, 689 and 703 nm are reported as possible separate emitters: they occur where no candidate parent line is present.
 - **Synthetic check.** On the 12 held-out synthetic maps (truth: no discrete replicas) the diagnostic reports no replica and no separate emitter. One independent map-wide pair (656/669 nm) is caught by the presence rule.
+
+## Follow-up shortlist
+
+fastdecov is a **preliminary screen**. At 150 g/mm the instrument response (3.25 meV) hides the true line shape, so every run ends with `shortlist.md` / `shortlist.json`, which list the lines worth re-measuring with a higher grating.
+
+**Tiers:**
+1. **Tier 1: g² priority** (strong, isolated, sharp), ordered by **ν_intrinsic**. ν_intrinsic is ν with the instrument removed (see [Line shape](#line-shape-voigt-decomposition)). The more Lorentzian, the closer to an ideal zero-phonon line: a *direction*, never a gate.
+2. **Tier 2: other strong emitter lines** (peak ≥ 50σ) that are crowded, not sharp, or broadened. The higher grating should show whether each is a single emitter.
+3. **Tier 3: possible separate emitters** left in the residual (see [Phonon replicas and separate emitters](#phonon-replicas-and-separate-emitters)).
+
+Broad components and phonon replicas are never listed.
+
+**Per line:** centre (nm and eV), widths, ν fit → intrinsic, the three best pixels (spectrum and grid position, where the line is strong and dominant), a spectral window (including the sideband), and the questions the measurement should answer. The suggested grating is the coarsest one in the physics JSON (`follow_up_gratings_meV`: 600 g/mm ≈ 0.3 meV, 2400 g/mm ≈ 0.03 meV) whose resolution is at most half the estimated Lorentzian width, or the finest one if that is unknown or smaller.
+
+**Example, full pillar-9 map:**
+1. **724.86 nm** (tier 1, ν_intrinsic 0.0): 600 g/mm at pixels 0465/0466/0558.
+2. **718.15 nm** (tier 1, ν_intrinsic 1.0, 8 meV extra Gaussian): 2400 g/mm.
+3. **683.61 nm and 733.38 nm** (tier 2).
+4. **703, 617, 601 and 629 nm** (tier 3).
+
+On the tent map, the 695.35 nm emitter is tier 1: 600 g/mm at pixels 0053/0063/0074.
+
+## Line shape (Voigt decomposition)
+
+An ideal zero-phonon line is Lorentzian (ν → 0). The spectrometer convolves it with its Gaussian response, and spectral diffusion or unresolved structure add more Gaussian width, so the fitted pseudo-Voigt ν mixes all of these. For each emitter line, in every strong, unclipped spectrum (≥ 50σ, ≥ 10 % of the line area), the line is isolated: data minus background and every other fitted component. It is then refitted as a true Voigt with the Gaussian ≥ the instrument FWHM. The report gives, per line:
+- **Lorentzian (homogeneous) FWHM.** Flagged when it is below half the instrument FWHM, where 150 g/mm cannot pin it down.
+- **Gaussian FWHM, and the extra Gaussian beyond the instrument in meV.** Flagged **broadened** when the extra is larger than the instrument resolution.
+- **ν_intrinsic:** the pseudo-Voigt ν equivalent to the line with the instrument removed (Thompson–Cox–Hastings).
+
+The fit itself is unchanged; forcing ν → 0 makes the 695 nm line fit about 10× worse (reduced χ² 35 against 3.5).
+
+**Synthetic check** (59 emitter lines on the held-out maps, true widths known):
+
+| Quantity recovered | Correlation with truth | Typical error |
+|---|---|---|
+| Lorentzian FWHM | 0.95 | 0.05 nm |
+| extra Gaussian | 0.96 | 0.08 nm |
+| ν_intrinsic | 0.94 | 0.03 |
+
+The Lorentzian-dominated class (ν_intrinsic ≤ 0.5) is right for 97 % of lines, against 90 % with the fitted ν.
+
+**Tent map, 695.35 nm:** Lorentzian 1.3 meV, extra Gaussian 6.3 meV, ν_intrinsic 0.76. The line is broadened, and its Lorentzian width is below the resolution, so it is followed up at a higher grating.
 
 ## Local emitters (experimental)
 

@@ -189,3 +189,28 @@ def test_replica_classified_and_absent_without():
             assert len(offs) == 1 and abs(offs[0] - 31.0) < 3.0, (lines, feats)
         else:
             assert not offs, (lines, feats)
+
+
+def test_voigt_intrinsic_nu_and_grating_choice():
+    from fastdecov import lineshape, shortlist, physics
+    assert lineshape.nu_from_widths(1.0, 0.0) == 0.0 and lineshape.nu_from_widths(0.0, 1.0) == 1.0
+    assert 0.2 < lineshape.nu_from_widths(1.0, 1.0) < 0.8
+    phys = physics.load()
+    assert shortlist._grating(2.0, phys) == "600 g/mm"         # 0.3 meV <= half of 2 meV
+    assert shortlist._grating(0.3, phys) == "2400 g/mm"        # needs the finest grating
+    assert shortlist._grating(None, phys) == "2400 g/mm"
+
+
+def test_shortlist_written_and_excludes_broad_and_replicas(tmp_path):
+    d = make_map(tmp_path); out = tmp_path / "out"
+    r = subprocess.run([sys.executable, "-m", "fastdecov", "fit", str(d), str(out), "--threads", "2", "--grid", "4x6"],
+                       capture_output=True, text=True)
+    assert r.returncode == 0, r.stderr
+    sl = json.loads((out / "shortlist.json").read_text())["items"]
+    rows = {e["emitter"]: e for e in json.loads((out / "emitter_report.json").read_text())["emitters"]}
+    for it in sl:
+        assert it["tier"] in (1, 2, 3)
+        if it["emitter"] is not None:
+            assert rows[it["emitter"]]["kind"] == "emitter line"
+    assert [it["rank"] for it in sl] == list(range(1, len(sl) + 1))
+    assert (out / "shortlist.md").is_file()

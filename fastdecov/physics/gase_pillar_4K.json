@@ -7,7 +7,12 @@
   "temperature_K": "Supplementary Figs S5-S7: hyperspectral PL map of tent A measured at T = 3.5 K",
   "instrument_resolution_meV": "Methods: Isoplane SCT-320, 150 g/mm grating, spectral resolution ~3.25 meV (600 g/mm ~300 ueV, 2400 g/mm ~30 ueV)",
   "strain_shift_halfrange_nm": "Supplementary Fig. S6 (per-pixel peak wavelengths of the ten NMF lines over the 11x11 tent-A map): the dominant 694 nm line spans 694.6-696.2 nm (1.6 nm); weaker lines span 3-7 nm (partly noise). Half-range ~1-3 nm; 3.0 nm used as the per-line centre window. Main text: 'no spectral wandering' in PL.",
-  "optical_phonon_max_meV": "Upper bound for a one-phonon optical replica offset. GaSe's highest Raman-active optical mode is ~308 cm^-1 (~38 meV; literature value, to be confirmed by the user); rounded up to 40 meV. On the tent map the 695 nm emitter's optical-phonon replica sits 31-32 meV below it (user-confirmed from the map: present only with the line, constant offset, follows its strain shift, same width)."
+  "optical_phonon_max_meV": "Upper bound for a one-phonon optical replica offset. GaSe's highest Raman-active optical mode is ~308 cm^-1 (~38 meV; literature value, to be confirmed by the user); rounded up to 40 meV. On the tent map the 695 nm emitter's optical-phonon replica sits 31-32 meV below it (user-confirmed from the map: present only with the line, constant offset, follows its strain shift, same width).",
+  "follow_up_gratings_meV": "Methods: same spectrometer, 600 g/mm ~300 ueV, 2400 g/mm ~30 ueV (used to recommend the grating for follow-up of shortlisted lines)."
  },
- "optical_phonon_max_meV": 40.0
+ "optical_phonon_max_meV": 40.0,
+ "follow_up_gratings_meV": {
+  "600 g/mm": 0.3,
+  "2400 g/mm": 0.03
+ }
 }
