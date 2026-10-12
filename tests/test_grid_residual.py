@@ -153,3 +153,39 @@ def test_background_floor():
         t = (x - model.X_REF) / model.X_SCALE; bg = f.params[0, 0] + f.params[0, 1] * t
         if floor:
             assert bg.min() >= -3.0 * 5.0 * 1.2, bg.min()
+
+
+def _replica_map(n=36, with_replica=True, rng=None):
+    """6x6 map: one emitter at ~690 nm whose strength and position vary across the map, plus (optionally) an
+    optical-phonon replica 31 meV below it, which the emitter model does not include. The emitter is absent from the
+    first row, so "present only where its emitter is" is an informative test."""
+    from fastdecov import api, emitter
+    rng = rng or np.random.default_rng(7); x = np.linspace(620, 760, 450); ys, ids = [], []
+    for i in range(n):
+        r, c = divmod(i, 6)
+        a = 0.0 if r == 0 else 4000 * (0.3 + 0.7 * np.exp(-((r - 2.5) ** 2 + (c - 2.5) ** 2) / 6))   # absent in row 0
+        c0 = 690.0 + 0.25 * (r - 2.5)
+        y = emitter.evaluate(np.array([5.0, 0.0, a, c0, 0.3, 3.0]), x, [0])
+        if with_replica:
+            e = 1239.84193 / c0 - 0.031; cr = 1239.84193 / e
+            y = y + 0.06 * a * np.exp(-4 * np.log(2) * ((x - cr) / 3.2) ** 2)
+        y = y + 60.0 * np.exp(-((x - 650.0) / 8.0) ** 2)            # a weak map-wide band, so no spectrum is empty
+        ys.append(y + rng.normal(0, 4, x.size)); ids.append(f"{i + 1:04d}")
+    return api.SpectrumMap(ids, [x] * n, ys)
+
+
+def test_replica_classified_and_absent_without():
+    from fastdecov import api, physics, replicas, report
+    phys = physics.load()
+    for with_rep in (True, False):
+        m = _replica_map(with_replica=with_rep)
+        res = api.fit_map(m, "v3", threads=2, grid=(6, 6))
+        rows = report.ranking(res, phys); kinds = [r["kind"] for r in rows]
+        lines = replicas.fitted_line_replicas(res, phys, kinds=kinds)          # replica discovered as a fitted line
+        feats = replicas.analyse(res, phys, kinds=kinds)                      # or left in the residual
+        offs = [t["offset_meV"] for t in lines.values()] + \
+               [f["offset_meV"] for f in feats if f["classification"] == "optical-phonon replica"]
+        if with_rep:
+            assert len(offs) == 1 and abs(offs[0] - 31.0) < 3.0, (lines, feats)
+        else:
+            assert not offs, (lines, feats)

@@ -124,11 +124,11 @@ def detect_grid(m):
 
 
 def save(res, out, name=None, phys=None, figures=False, formats=("tif",), grid=None, threads=None, residual_limit=None,
-         snr_classes=None):
+         snr_classes=None, residual_features=True):
     """Write dc/dc_<id>.txt, emitters.tsv, spectra.tsv, basis.json, emitter_report.{md,json}, optional maps/figures.
     grid: None, "auto", (rows, cols[, serpentine]) or a dict from detect_grid. residual_limit: (floor, k), default (100, 3)."""
     phys = phys if isinstance(phys, dict) else physics.load(phys)
     if isinstance(grid, str) and grid == "auto":
         grid = G.detect(res.ids, res.xs, res.ys)
     return report.save(res, out, name, phys, figures, formats, grid, threads or len(os.sched_getaffinity(0)), residual_limit,
-                       snr_classes)
+                       snr_classes, residual_features)

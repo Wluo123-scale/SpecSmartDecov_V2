@@ -8,7 +8,7 @@ from pathlib import Path
 
 import numpy as np
 
-from . import basis as B, emitter, grid as G, legacy, physics
+from . import basis as B, emitter, grid as G, legacy, physics, replicas as RP
 
 # Ranking for single-photon (g2) follow-up. nu and the sideband ZPL fraction are reported, not used as gates: at
 # 150 g/mm the antibunched ~692 nm emitter of the reference study (g2(0) = 0.43) looks Gaussian-dominated, because the
@@ -237,6 +237,26 @@ def maps(path, res, rows, grid):
     fig.tight_layout(); fig.savefig(path, dpi=90); plt.close(fig)
 
 
+def feature_maps(path, res, feats, grid):
+    """Per residual feature: where it is detected, next to the map of its parent emitter (if any)."""
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    fig, axs = plt.subplots(len(feats), 2, figsize=(8, 3.4 * len(feats)), squeeze=False)
+    for i, f in enumerate(feats):
+        det = np.zeros(len(res.ids)); det[[res.ids.index(s) for s in f["spectrum_ids"]]] = 1
+        axs[i, 0].imshow(G.image(det, grid), cmap="Greys", vmin=0, vmax=1, aspect="auto")
+        axs[i, 0].set_title(f"{f['center_nm']} nm bump: {f['classification']}", fontsize=8)
+        if "parent_emitter" in f:
+            im = axs[i, 1].imshow(G.image(res.table[:, f["parent_emitter"] - 1, 3], grid), cmap="viridis", aspect="auto")
+            axs[i, 1].set_title(f"parent #{f['parent_emitter']} {f['parent_center_nm']} nm ZPL area "
+                                f"(offset {f['offset_meV']} meV)", fontsize=8)
+            fig.colorbar(im, ax=axs[i, 1])
+        else:
+            axs[i, 1].axis("off")
+    fig.tight_layout(); fig.savefig(path, dpi=90); plt.close(fig)
+
+
 def snr_map(path, snr, cls, grid, bounds):
     """Peak-SNR map (log scale) and the substrate / weak / emitter classes."""
     import matplotlib
@@ -253,7 +273,7 @@ def snr_map(path, snr, cls, grid, bounds):
 
 
 def save(res, out, name=None, phys=None, figures=False, formats=("tif",), grid=None, threads=1, residual_limit=None,
-         snr_classes=None):
+         snr_classes=None, residual_features=True):
     """Write every output for a fitted map into `out` (see README, 'Outputs'). residual_limit = (floor, k_sqrt)."""
     phys = phys or physics.load()
     limit = tuple(residual_limit or (RESIDUAL_LIMIT["floor"], RESIDUAL_LIMIT["k_sqrt"]))
@@ -287,15 +307,29 @@ def save(res, out, name=None, phys=None, figures=False, formats=("tif",), grid=N
     (out / "basis.json").write_text(json.dumps(dict(method=res.method, K=res.K, psb=[int(v) for v in res.psb],
                                                     centers=[round(res.median(0, k), 4) for k in range(res.K)],
                                                     **res.extra), indent=1, default=float) + "\n")
-    rows = ranking(res, phys); q = quality(res, ps=ps)
+    rows = ranking(res, phys)
+    if residual_features:                       # fitted lines that are optical-phonon replicas of a bluer line
+        for b, t in RP.fitted_line_replicas(res, phys, kinds=[r["kind"] for r in rows]).items():
+            rows[b]["kind"] = f"replica of #{t['emitter']}"; rows[b]["g2_priority"] = False
+            rows[b]["replica"] = {k: t[k] for k in ("emitter", "emitter_center_nm", "offset_meV", "offset_iqr_meV",
+                                                     "tracking_slope", "width_ratio", "area_ratio_median", "area_rank_corr")}
+    q = quality(res, ps=ps)
+    feats = RP.analyse(res, phys, kinds=[r["kind"] for r in rows]) if residual_features else None
+    if feats is not None:
+        (out / "residual_features.json").write_text(json.dumps(dict(criteria=RP.TEST, min_snr=RP.MIN_SNR,
+                                                                    min_spectra=RP.MIN_SPECTRA, features=feats),
+                                                               indent=1, default=float) + "\n")
     (out / "emitter_report.json").write_text(json.dumps(dict(map=name, method=res.method, criteria=RANK, physics=phys,
                                                              fit_quality=q, emitters=rows), indent=1, default=float) + "\n")
     (out / "emitter_report.md").write_text(ranking_markdown(name, res, rows, phys) +
                                            f"\nFit quality: pass rate {q['pass_rate']:.2f}, reduced chi^2 median {q['rchi2_median']:.2f}.\n"
-                                           + residual_markdown(q, res.method))
+                                           + residual_markdown(q, res.method)
+                                           + (RP.markdown(feats) if feats is not None else ""))
     if grid:
         maps(out / "emitter_maps.png", res, rows, grid)
         snr_map(out / "snr_map.png", psnr, cls, grid, bounds)
+        if feats:
+            feature_maps(out / "residual_features.png", res, feats, grid)
     if figures:
         items = [(sid, res.xs[s], res.ys[s], res.keeps[s], res.params[s], list(res.psb)) for s, sid in enumerate(res.ids)]
         if threads > 1:

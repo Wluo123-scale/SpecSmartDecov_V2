@@ -1,7 +1,7 @@
 """Command-line interface: `fastdecov <command> ...` (also `python -m fastdecov`).
 
   fastdecov fit INPUT_DIR OUTPUT_DIR [--method v3|v2|legacy] [--grid auto|none|ROWSxCOLS[s]] [--physics FILE]
-                [--residual-limit FLOOR,K] [--snr-classes LOW,HIGH] [--local-emitters] [--threads N] [--figures] [--png] [--name NAME] [--verbose]
+                [--residual-limit FLOOR,K] [--snr-classes LOW,HIGH] [--no-residual-features] [--local-emitters] [--threads N] [--figures] [--png] [--name NAME] [--verbose]
   fastdecov report OUTPUT_DIR                print the emitter report of a finished run
   fastdecov physics [--template FILE]        show the default physics parameters, or write an editable copy
   fastdecov info                             version, compiler and solver status
@@ -60,7 +60,8 @@ def cmd_fit(a):
     res = api.fit_map(m, a.method, phys, threads, verbose=a.verbose, local=a.local_emitters, grid=g)
     t_fit = time.perf_counter()
     formats = ("tif", "png") if a.png else ("tif",)
-    out = api.save(res, a.output, a.name, phys, a.figures, formats, g, threads, a.residual_limit, a.snr_classes)
+    out = api.save(res, a.output, a.name, phys, a.figures, formats, g, threads, a.residual_limit, a.snr_classes,
+                   not a.no_residual_features)
     t_end = time.perf_counter()
     q = out["quality"]
     (Path(a.output) / "run.json").write_text(json.dumps(dict(
@@ -115,6 +116,8 @@ def main(argv=None):
                         "ROWSxCOLS in file order (append s for a serpentine scan)")
     f.add_argument("--snr-classes", type=_limit, default=(20.0, 300.0), metavar="LOW,HIGH",
                    help="peak-SNR bounds of the substrate / weak / emitter spectrum classes used in the report (default 20,300)")
+    f.add_argument("--no-residual-features", action="store_true",
+                   help="skip the residual-feature diagnostic (phonon replica vs separate emitter, residual_features.json)")
     f.add_argument("--local-emitters", action="store_true",
                    help="v3, experimental: also add emitters that exist only in a small connected patch of the map")
     f.add_argument("--residual-limit", type=_limit, default=(100.0, 3.0), metavar="FLOOR,K",

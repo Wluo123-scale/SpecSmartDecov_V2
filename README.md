@@ -26,7 +26,8 @@ All three use the same fast solver: bound-constrained Levenberg–Marquardt with
 
 ```text
 fastdecov fit INPUT_DIR OUTPUT_DIR [--method v3|v2|legacy] [--grid auto|none|ROWSxCOLS[s]] [--physics FILE]
-              [--residual-limit FLOOR,K] [--snr-classes LOW,HIGH] [--local-emitters] [--threads N] [--figures] [--png]
+              [--residual-limit FLOOR,K] [--snr-classes LOW,HIGH] [--no-residual-features] [--local-emitters]
+              [--threads N] [--figures] [--png]
               [--name NAME] [--pattern '*.txt'] [--verbose]
 fastdecov report OUTPUT_DIR            # print the emitter report of a finished run
 fastdecov physics [--template FILE]    # show / copy the physics parameters
@@ -75,6 +76,7 @@ out["ranking"], out["quality"]                            # emitter ranking and 
 | `basis.json` | discovered emitters, sideband flags, centre windows, discovery history, held-out BIC |
 | `emitter_report.md` / `.json` | emitter ranking (below), fit quality and the residual-limit summary |
 | `emitter_maps.png` | per-emitter area maps (when a grid is known) |
+| `residual_features.json` / `.png` | recurring residual bumps classified against the map (phonon replica / possible separate emitter / unclassified) and where they occur |
 | `snr_map.png` | peak-SNR map and the substrate / weak / emitter classes (when a grid is known) |
 | `run.json` | version, settings, physics, detected grid (with its confidence and candidates), timings |
 
@@ -162,7 +164,34 @@ On the emitter spectra of pillar 9, the typical max |r| is about 550 counts on p
 - **Tent map.** The 600–650 nm band gains a resolved 628/635 nm structure on top of the band-edge components. 695.35 nm stays the only g²-priority emitter.
 - **Pillar-9 crop.** Unchanged.
 
-**Still unmodelled:** a weak bump at about 706–710 nm on the red tail of the tent map's 695 nm line, about 30 meV below it. It may be an optical-phonon replica or a weak separate emitter, and it is left as residual on purpose.
+**Not modelled on purpose:** a weak line at about 708 nm on the red tail of the tent map's 695 nm emitter. The map shows it is an optical-phonon replica; see [Phonon replicas and separate emitters](#phonon-replicas-and-separate-emitters).
+
+## Phonon replicas and separate emitters
+
+A structured residual can be an unresolved separate emitter or a phonon replica of a fitted emitter, and a single spectrum cannot tell which. The map can. For every recurring residual bump (≥ 5σ in ≥ 5 spectra, away from masked pixels and from line cores), and for every pair of fitted emitter lines, `fastdecov` tests the redder feature against each bluer emitter line over the spectra where it occurs:
+
+| Test | Requirement for a phonon replica |
+|---|---|
+| presence | it occurs only where the emitter is present (≥ 95 % of its spectra) |
+| constant offset | the energy offset to the emitter is constant across the map: interquartile range ≤ 0.5 × instrument resolution |
+| follows the shift | its energy follows the emitter's strain shift: slope 0.7–1.3, tested when the emitter shifts by ≥ 0.25 × instrument resolution |
+| width | FWHM ratio to the emitter 0.7–2 |
+| phonon energy | offset between 2 × instrument resolution (a discrete line, not the acoustic sideband) and `optical_phonon_max_meV` in the physics JSON (40 meV for GaSe) |
+| intensity | its area rank-correlates with the emitter's across the map (Spearman ≥ 0.5) |
+
+A feature that passes all six is reported as an **optical-phonon replica** of that emitter, with its energy offset and area ratio. A fitted line that passes is labelled `replica of #N` in the emitter table and is never a g² candidate.
+
+The presence test is meaningful only if the emitter is absent somewhere. When the emitter is absent from less than 10 % of the map, two independent map-wide emitters sharing the strain field can pass every test, so the result is reported only as a **possible replica (presence test uninformative)**. A bump that occurs where no candidate parent is present (≥ 20 % of its spectra) is reported as a **possible separate emitter**; anything else is unclassified. Nothing is fitted away: the fit is unchanged. `--no-residual-features` skips the diagnostic.
+
+**Results:**
+- **Tent map.** The 708.67 nm line (25 spectra) is an optical-phonon replica of the 695.99 nm emitter:
+  - offset 31.9 meV, interquartile range 1.2 meV;
+  - width ratio 1.29, area ratio 0.56 %, rank correlation 0.85;
+  - the emitter is absent from about 21 % of the map, so the presence test is informative.
+
+  The user confirmed this assignment from the map.
+- **Pillar 9.** Recurring bumps at about 600–630, 673, 689 and 703 nm are reported as possible separate emitters: they occur where no candidate parent line is present.
+- **Synthetic check.** On the 12 held-out synthetic maps (truth: no discrete replicas) the diagnostic reports no replica and no separate emitter. One independent map-wide pair (656/669 nm) is caught by the presence rule.
 
 ## Local emitters (experimental)
 
