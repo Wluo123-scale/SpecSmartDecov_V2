@@ -55,6 +55,15 @@ def residual_check(res, floor=RESIDUAL_LIMIT["floor"], k_sqrt=RESIDUAL_LIMIT["k_
     return mx, ratio, ratio <= 1.0
 
 
+def implied_huang_rhys(zpl_fraction):
+    """S = -ln(ZPL fraction): the ZPL fraction is the Debye-Waller factor, which equals exp(-S) for linear coupling to a
+    single phonon mode at low temperature. A model-dependent estimate: the Gaussian sideband's area is approximate, and an
+    unresolved neighbouring emitter inside the sideband would bias it upward. Not used in any decision."""
+    if zpl_fraction is None or not np.isfinite(zpl_fraction) or zpl_fraction <= 0 or zpl_fraction >= 1:
+        return None
+    return round(float(-np.log(zpl_fraction)), 3)
+
+
 def ranking(res, phys):
     """Per emitter: centre, median nu/FWHM, SNR, sideband, and the strong / isolated / sharp / g2-priority flags."""
     tab, share, K = res.table, res.share, res.K
@@ -73,6 +82,7 @@ def ranking(res, phys):
         r = dict(emitter=k + 1, center_nm=round(float(cen[k]), 2), nu_median=round(nu, 3), fwhm_nm=round(w, 2),
                  fwhm_over_instrument=round(w / inst, 2), max_snr=round(float(snr[:, k].max()), 1),
                  spectra_with_share_ge_10pct=int(m.sum()), phonon_sideband=bool(res.psb[k]), zpl_fraction=round(zf, 3),
+                 huang_rhys_implied=implied_huang_rhys(zf) if res.psb[k] else None,
                  strong=bool(snr[:, k].max() >= RANK["strong_snr"]), isolated=bool(isolated),
                  sharp=bool(w <= RANK["sharp_x_instrument"] * inst), nu_reliable=bool(w >= RANK["sampling_px"] * step))
         r["g2_priority"] = r["strong"] and r["isolated"] and r["sharp"]
@@ -139,12 +149,14 @@ def ranking_markdown(name, res, rows, phys):
          f"Instrument resolution {phys['instrument_resolution_meV']} meV. g2 priority = strong (>= {RANK['strong_snr']:.0f} sigma) "
          f"AND isolated (no emitter within {RANK['isolated_x_fwhm']} x FWHM) AND sharp (FWHM <= {RANK['sharp_x_instrument']:.0f} x "
          "instrument FWHM). nu and the sideband ZPL fraction are informative only; confirmation needs g2(0) < 0.5 or a "
-         "high-resolution spectrum.", "",
-         "| # | ZPL centre (nm) | median ν | FWHM (nm) | FWHM / instrument | max SNR | spectra ≥10 % | sideband (ZPL fraction) | strong | isolated | sharp | **g² priority** |",
-         "|---|---|---|---|---|---|---|---|---|---|---|---|"]
+         "high-resolution spectrum. Implied S = -ln(ZPL fraction) is the Huang-Rhys factor for single-mode linear coupling "
+         "at low temperature: a model-dependent estimate (Gaussian sideband area; an unresolved neighbour would raise it).", "",
+         "| # | ZPL centre (nm) | median ν | FWHM (nm) | FWHM / instrument | max SNR | spectra ≥10 % | sideband (ZPL fraction) | implied S | strong | isolated | sharp | **g² priority** |",
+         "|---|---|---|---|---|---|---|---|---|---|---|---|---|"]
     for r in rows:
         L.append(f"| {r['emitter']} | {r['center_nm']} | {r['nu_median']} | {r['fwhm_nm']} | {r['fwhm_over_instrument']} | {r['max_snr']} | "
                  f"{r['spectra_with_share_ge_10pct']} | {('yes (' + str(r['zpl_fraction']) + ')') if r['phonon_sideband'] else '–'} | "
+                 f"{r['huang_rhys_implied'] if r['huang_rhys_implied'] is not None else '–'} | "
                  f"{yn(r['strong'])} | {yn(r['isolated'])} | {yn(r['sharp'])} | **{'YES' if r['g2_priority'] else 'no'}** |")
     return "\n".join(L) + "\n"
 
@@ -239,10 +251,12 @@ def save(res, out, name=None, phys=None, figures=False, formats=("tif",), grid=N
     snr = res.heights / res.sigma[:, None]
     with open(out / "emitters.tsv", "w") as fh:
         fh.write("spectrum_id\temitter\tzpl_center_nm\tnu\tzpl_fwhm_nm\tzpl_area\tpsb_area\tpsb_offset_nm\tpsb_fwhm_nm\t"
-                 "zpl_fraction\tzpl_peak_snr\n")
+                 "zpl_fraction\tzpl_peak_snr\thuang_rhys_implied\n")
         for s, sid in enumerate(res.ids):
             for k in range(res.K):
-                fh.write(f"{sid}\t{k + 1}\t" + "\t".join(f"{v:.10g}" for v in res.table[s, k]) + f"\t{snr[s, k]:.4g}\n")
+                hr = implied_huang_rhys(res.table[s, k, 7]) if res.psb[k] else None
+                fh.write(f"{sid}\t{k + 1}\t" + "\t".join(f"{v:.10g}" for v in res.table[s, k]) + f"\t{snr[s, k]:.4g}\t"
+                         + ("" if hr is None else f"{hr:.4g}") + "\n")
     with open(out / "spectra.tsv", "w") as fh:
         fh.write("spectrum_id\tsse\tbackground_700nm\tbackground_slope_per_nm\tmasked_pixels\tclipped_pixels\t"
                  "max_abs_residual\tresidual_limit_ratio\tresidual_ok\tpeak_counts\tpeak_snr\tspectrum_class\n")

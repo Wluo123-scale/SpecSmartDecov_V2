@@ -99,3 +99,8 @@ def test_snr_classes_in_outputs(tmp_path):
     assert sum(v["n"] for v in q["by_class"].values()) == 24
     assert (out / "snr_map.png").is_file()
     assert report.classify(np.array([5.0, 20.0, 299.0, 300.0])).tolist() == [0, 1, 1, 2]
+
+
+def test_implied_huang_rhys():
+    assert report.implied_huang_rhys(np.exp(-1.5)) == 1.5
+    assert report.implied_huang_rhys(1.0) is None and report.implied_huang_rhys(0.0) is None and report.implied_huang_rhys(None) is None

@@ -70,7 +70,7 @@ out["ranking"], out["quality"]                            # emitter ranking and 
 |---|---|
 | `dc/dc_<id>.txt` | MATLAB `writer.m` format, one row per emitter: zero-phonon centre, ν, FWHM, area |
 | `dc/dc_<id>.tif` | fit figure (with `--figures`) |
-| `emitters.tsv` | per spectrum and emitter: ZPL centre/ν/FWHM/area, sideband area/offset/FWHM, ZPL fraction, peak SNR |
+| `emitters.tsv` | per spectrum and emitter: ZPL centre/ν/FWHM/area, sideband area/offset/FWHM, ZPL fraction, peak SNR, implied Huang–Rhys S |
 | `spectra.tsv` | per spectrum: SSE, background, masked pixels (cosmic rays and clipped peaks), clipped pixels, max \|residual\|, residual / limit, residual-limit pass flag, peak counts, peak SNR, spectrum class |
 | `basis.json` | discovered emitters, sideband flags, centre windows, discovery history, held-out BIC |
 | `emitter_report.md` / `.json` | emitter ranking (below), fit quality and the residual-limit summary |
@@ -86,6 +86,12 @@ Each emitter is flagged as follows:
 - **sharp:** FWHM ≤ 3 × the instrument FWHM at its wavelength.
 
 Emitters that are all three are flagged as **g² priority**: the best candidates for photon-correlation measurements.
+
+**Implied Huang–Rhys factor.** For emitters with a sideband, the report and `emitters.tsv` give S = −ln(ZPL fraction). The ZPL fraction is the Debye–Waller factor, which equals e^(−S) for linear coupling to a single phonon mode at low temperature. This is a model-dependent estimate, not a fit of the phonon structure:
+- the Gaussian sideband's area is approximate;
+- an unresolved neighbouring emitter inside the sideband would raise it.
+
+It is not used in any decision. Examples: the tent map's 695.33 nm g²-priority emitter has a ZPL fraction of 0.948, so S ≈ 0.05; pillar 9's 709.5 nm emitter has 0.765, so S ≈ 0.27. The sideband is deliberately kept a simple Gaussian. A physical sideband shape follows from Franck–Condon factors and the phonon spectrum, and a free skew parameter would also hide unresolved neighbouring emitters.
 
 ν and the sideband's zero-phonon fraction are reported but not used as gates. At low spectral resolution, a true single-photon emitter can look Gaussian-dominated: in the reference study, the antibunched ~692 nm emitter (g²(0) = 0.43) has ν ≈ 0.8 at 150 g/mm, because unresolved exciton/biexciton structure and spectral diffusion broaden it. Confirmation needs g²(0) < 0.5 or a high-resolution spectrum.
 
