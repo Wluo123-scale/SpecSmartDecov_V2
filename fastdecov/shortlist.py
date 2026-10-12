@@ -17,7 +17,7 @@ import json
 
 import numpy as np
 
-from . import grid as G, physics
+from . import physics
 
 TOP_PIXELS = 3
 

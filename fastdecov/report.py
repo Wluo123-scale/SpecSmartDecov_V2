@@ -113,7 +113,7 @@ def quality(res, limit=None, snr_classes=None, ps=None):
     ps: per_spectrum() results, if already computed."""
     ok, rch = [], []
     for s in range(len(res.ids)):
-        x, y, k = res.xs[s], res.ys[s], res.keeps[s]
+        y, k = res.ys[s], res.keeps[s]
         r = (y - res.curve(s))[k]; yk = y[k]; n = r.size; sg = res.sigma[s]
         pk = float(yk.max() - np.median(yk[:max(5, n // 12)]))
         ok.append(bool(np.sqrt(np.mean(r ** 2)) <= max(PASS["rms_peak"] * pk, PASS["rms_sigma"] * sg) and

@@ -15,7 +15,7 @@ Gaussian FWHM >= the instrument FWHM. Reported per emitter (medians over those s
 """
 import numpy as np
 
-from . import basis as B, emitter, physics
+from . import basis as B, physics
 
 HC = 1239.84193
 LN2 = np.log(2.0)
@@ -51,7 +51,6 @@ def analyse(res, phys=None, kinds=None):
     """Per emitter line: dict with the Voigt decomposition, or None if too few strong, unclipped spectra."""
     from scipy.optimize import curve_fit
     phys = phys or physics.load()
-    off, _ = emitter.offsets(res.psb)
     snr = res.heights / res.sigma[:, None]
     clipped = np.array([not B.clip_keep(np.asarray(y)).all() for y in res.ys])
     out = []
