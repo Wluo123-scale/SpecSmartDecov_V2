@@ -82,12 +82,10 @@ def _bumps(res, s, phys):
     return out
 
 
-PHYS = physics.load()
-
-
-def _test_parent(res, S, k, bc, bw, ba, present, area, res_meV):
+def _test_parent(res, S, k, bc, bw, ba, present, area, phys):
     """The six replica tests of a feature (per-spectrum centres bc, FWHMs bw, areas ba over spectra S) against
-    emitter k as its parent."""
+    emitter k as its parent. phys: physics parameters (instrument resolution, optical_phonon_max_meV)."""
+    res_meV = phys["instrument_resolution_meV"]
     ec = res.table[S, k, 0]; ew = res.table[S, k, 2]; ea = area[S, k]
     pres = float(np.mean(present[S, k]))
     on = present[S, k]
@@ -104,7 +102,7 @@ def _test_parent(res, S, k, bc, bw, ba, present, area, res_meV):
     rank = lambda v: np.argsort(np.argsort(v))
     rho = float(np.corrcoef(rank(ba[on]), rank(ea[on]))[0, 1]) if on.sum() >= 3 else None
     ratio = ba[on] / np.maximum(ea[on], 1e-300)
-    off = float(np.median(dE)); emax = PHYS.get("optical_phonon_max_meV")
+    off = float(np.median(dE)); emax = phys.get("optical_phonon_max_meV")
     t = dict(emitter=k + 1, emitter_center_nm=round(float(np.median(ec)), 2), presence=round(pres, 3),
              offset_meV=round(off, 2), offset_iqr_meV=round(iqr, 2), emitter_shift_iqr_meV=round(spread, 2),
              tracking_slope=None if slope is None else round(slope, 3), tracking_tested=bool(testable),
@@ -128,9 +126,7 @@ def _test_parent(res, S, k, bc, bw, ba, present, area, res_meV):
 def fitted_line_replicas(res, phys=None, kinds=None):
     """Fitted emitter lines that are optical-phonon replicas of a bluer fitted line (same six tests, on the fitted
     centres, widths and areas). Returns {replica emitter index (0-based): test dict of its parent}."""
-    global PHYS
-    PHYS = phys or physics.load()
-    res_meV = PHYS["instrument_resolution_meV"]
+    phys = phys or physics.load()
     area = res.table[..., 3]
     present = area >= TEST["present_area"] * np.maximum(area.max(0, keepdims=True), 1e-300)
     out = {}
@@ -144,7 +140,7 @@ def fitted_line_replicas(res, phys=None, kinds=None):
         for a in lines:
             if a == b or np.median(res.table[S, a, 0]) >= np.median(bc):
                 continue
-            t = _test_parent(res, S, a, bc, bw, ba, present, area, res_meV)
+            t = _test_parent(res, S, a, bc, bw, ba, present, area, phys)
             if t.get("passed"):
                 ok.append(t)
         if ok:
@@ -155,13 +151,11 @@ def fitted_line_replicas(res, phys=None, kinds=None):
 def analyse(res, phys=None, kinds=None):
     """Classify recurring residual features. kinds: per emitter 'emitter line' / 'broad' (from report.ranking); only
     emitter lines are tested as replica parents. Returns a list of feature dicts."""
-    global PHYS
-    PHYS = phys or physics.load()
-    res_meV = PHYS["instrument_resolution_meV"]
-    gtol = 0.5 * PHYS["strain_shift_halfrange_nm"]
+    phys = phys or physics.load()
+    gtol = 0.5 * phys["strain_shift_halfrange_nm"]
     det = []                                             # (centre, spectrum, height, fwhm, area, snr)
     for s in range(len(res.ids)):
-        det += [(c, s, h, w, a, z) for c, h, w, a, z in _bumps(res, s, PHYS)]
+        det += [(c, s, h, w, a, z) for c, h, w, a, z in _bumps(res, s, phys)]
     if not det:
         return []
     det.sort()
@@ -193,7 +187,7 @@ def analyse(res, phys=None, kinds=None):
                 continue
             if np.median(res.table[S, k, 0]) >= np.median(bc):
                 continue                                 # replica must be on the red (low-energy) side
-            cands.append(_test_parent(res, S, k, bc, bw, ba, present, area, res_meV))
+            cands.append(_test_parent(res, S, k, bc, bw, ba, present, area, phys))
         f["tests"] = cands
         ok = [t for t in cands if t.get("passed")]
         maybe = [t for t in cands if t.get("possible")]
