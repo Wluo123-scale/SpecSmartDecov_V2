@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "fastdecov"
-version = "2.2.0"
+version = "2.3.0"
 description = "Fast emitter discovery and deconvolution of photoluminescence spectrum maps (SpecSmartDecov V2)"
 readme = "README.md"
 license = { text = "MIT" }
