@@ -69,6 +69,13 @@ def cmd_fit(a):
         physics=phys, local_emitters=a.local_emitters, grid={k: v for k, v in (g or {"rows": None}).items() if k != "order"}, residual_limit=a.residual_limit, snr_classes=a.snr_classes, figures=a.figures, fit_s=t_fit - t0, total_s=t_end - t0, python=platform.python_version(),
         fit_quality=q), indent=1, default=float) + "\n")
     print((Path(a.output) / "emitter_report.md").read_text())
+    sl = out["shortlist"]
+    if sl:
+        print("Follow-up shortlist (shortlist.md):")
+        for it in sl[:8]:
+            px = ", ".join(p["spectrum_id"] for p in it["best_pixels"])
+            print(f"  {it['rank']}. tier {it['tier']}  {it['center_nm']} nm  nu_int {it['nu_intrinsic'] if it['nu_intrinsic'] is not None else '–'}"
+                  f"  grating {it['grating'] or '–'}  pixels {px}  ({it['why']})")
     rl = q["residual_limit"]; em = q["snr_classes"]["by_class"]["emitter"]
     emtxt = f" ({em['residual_limit_pass']:.0%} of {em['n']} emitter spectra)" if em["n"] else ""
     print(f"{res.K} emitters ({int(sum(res.psb))} with phonon sideband); pass rate {q['pass_rate']:.2f}; "

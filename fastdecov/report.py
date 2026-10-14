@@ -8,7 +8,7 @@ from pathlib import Path
 
 import numpy as np
 
-from . import basis as B, emitter, grid as G, legacy, physics, replicas as RP
+from . import basis as B, emitter, grid as G, legacy, lineshape as LS, physics, replicas as RP, shortlist as SL
 
 # Ranking for single-photon (g2) follow-up. nu and the sideband ZPL fraction are reported, not used as gates: at
 # 150 g/mm the antibunched ~692 nm emitter of the reference study (g2(0) = 0.43) looks Gaussian-dominated, because the
@@ -113,7 +113,7 @@ def quality(res, limit=None, snr_classes=None, ps=None):
     ps: per_spectrum() results, if already computed."""
     ok, rch = [], []
     for s in range(len(res.ids)):
-        x, y, k = res.xs[s], res.ys[s], res.keeps[s]
+        y, k = res.ys[s], res.keeps[s]
         r = (y - res.curve(s))[k]; yk = y[k]; n = r.size; sg = res.sigma[s]
         pk = float(yk.max() - np.median(yk[:max(5, n // 12)]))
         ok.append(bool(np.sqrt(np.mean(r ** 2)) <= max(PASS["rms_peak"] * pk, PASS["rms_sigma"] * sg) and
@@ -313,6 +313,14 @@ def save(res, out, name=None, phys=None, figures=False, formats=("tif",), grid=N
             rows[b]["kind"] = f"replica of #{t['emitter']}"; rows[b]["g2_priority"] = False
             rows[b]["replica"] = {k: t[k] for k in ("emitter", "emitter_center_nm", "offset_meV", "offset_iqr_meV",
                                                      "tracking_slope", "width_ratio", "area_ratio_median", "area_rank_corr")}
+    shapes = LS.analyse(res, phys, kinds=[r["kind"] for r in rows])
+    for r, v in zip(rows, shapes):
+        r["line_shape"] = v
+    # direction towards an ideal ZPL: among g2-priority emitters, the more Lorentzian (lower nu_intrinsic) comes first
+    g2 = [r for r in rows if r["g2_priority"]]
+    g2.sort(key=lambda r: (r["line_shape"] or {}).get("nu_intrinsic", 1.0))
+    for i, r in enumerate(g2):
+        r["g2_order"] = i + 1
     q = quality(res, ps=ps)
     feats = RP.analyse(res, phys, kinds=[r["kind"] for r in rows]) if residual_features else None
     if feats is not None:
@@ -324,7 +332,10 @@ def save(res, out, name=None, phys=None, figures=False, formats=("tif",), grid=N
     (out / "emitter_report.md").write_text(ranking_markdown(name, res, rows, phys) +
                                            f"\nFit quality: pass rate {q['pass_rate']:.2f}, reduced chi^2 median {q['rchi2_median']:.2f}.\n"
                                            + residual_markdown(q, res.method)
+                                           + LS.markdown(shapes, rows)
                                            + (RP.markdown(feats) if feats is not None else ""))
+    sl = SL.build(res, rows, feats, phys, grid)
+    SL.save(out, sl, name)
     if grid:
         maps(out / "emitter_maps.png", res, rows, grid)
         snr_map(out / "snr_map.png", psnr, cls, grid, bounds)
@@ -340,4 +351,4 @@ def save(res, out, name=None, phys=None, figures=False, formats=("tif",), grid=N
                 list(ex.map(_figure_task, [(str(out / "dc"), c, formats, limit) for c in chunks]))
         else:
             _figure_task((str(out / "dc"), items, formats, limit))
-    return dict(ranking=rows, quality=q)
+    return dict(ranking=rows, quality=q, shortlist=sl)
