@@ -232,10 +232,10 @@ def _bandedge_map(seed=11):
 
 
 def test_localized_line_on_band_edge_not_shielded_by_its_sideband():
-    """2.5: a sharp line much narrower than the band-edge component's fitted sideband is a separate line, found by the
-    (default) local pass; with the 2.4 behaviour (local_psb_shield=False) the sideband shields it."""
+    """2.5: a sharp line on band-edge emission, present in 1.8 % of the map, is found by the (default) local pass even
+    under the band-edge component's fitted sideband; map-wide discovery alone (local=False) misses it."""
     from fastdecov import api
     m = _bandedge_map()
     near = lambda res: [res.median(0, k) for k in range(res.K) if abs(res.median(0, k) - 628.5) < 1.0]
     assert near(api.fit_map(m, "v3", threads=2, grid=(15, 15))), "2.5 should find the localized 628.5 nm line"
-    assert not near(api.fit_map(m, "v3", threads=2, grid=(15, 15), local_psb_shield=False))
+    assert not near(api.fit_map(m, "v3", threads=2, grid=(15, 15), local=False))

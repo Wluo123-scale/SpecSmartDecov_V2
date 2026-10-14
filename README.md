@@ -49,16 +49,15 @@ fastdecov fit path/to/spectra out/my_map --figures --name my_map
 3. **`snr_map.png`, `emitter_maps.png`**: where the substrate, the emitters and each line are on the map.
 4. **`dc/dc_<id>.tif`**: the fit of each spectrum (with `--figures`).
 
-**Example:** the 121-spectrum tent map of the reference study (arXiv:2305.03230), on 12 threads, takes about 8 s:
+**Example:** the 121-spectrum tent map of the reference study (arXiv:2305.03230), on 12 threads, takes about 18 s:
 
 ```text
 $ fastdecov fit pillar6_validation/output3-good out/pillar6 --name pillar6
 grid: 11x11 from spatial continuity (confidence 1.652); override with --grid ROWSxCOLS
 ...
 Follow-up shortlist (shortlist.md):
-  1. tier 1  695.35 nm  nu_int 0.756  grating 600 g/mm  pixels 0053, 0063, 0074  (strong, isolated and sharp, extra Gaussian 6.34 meV)
-  2. tier 2  627.85 nm  nu_int 1.0  grating 2400 g/mm  pixels 0116, 0115, 0114  (not isolated, not sharp, extra Gaussian 14.89 meV)
-5 emitters (1 with phonon sideband); pass rate 0.81; residual limit met by 46% of spectra (41% of 82 emitter spectra); 7.7 s
+  1. tier 1  695.35 nm  nu_int 0.761  grating 600 g/mm  pixels 0053, 0063, 0074  (strong, isolated and sharp, extra Gaussian 6.22 meV)
+# pillar6: v3 emitters (K = 11, 1 with phonon sideband)
 ```
 
 ## Methods
@@ -78,7 +77,7 @@ All three use the same solver: bound-constrained Levenberg–Marquardt with an a
 4. Unresolved, rare or unsupported emitters are pruned.
 5. **Local pass (default since 2.5):** lines confined to a small connected patch of pixels, too rare for the map-wide 3 % rule (for example sharp lines on band-edge emission), are added with their amplitude allowed only in that patch ([details](#local-emitters)).
 
-The number of components is therefore a result, not an input: 5 on the tent map, 10 on the 315-spectrum pillar-9 crop, and 13 on the full 900-spectrum pillar-9 map.
+The number of components is therefore a result, not an input: 11 on the tent map, 12 on the 315-spectrum pillar-9 crop and 16 on the full 900-spectrum pillar-9 map. That includes broad band-edge components and patch-confined local lines.
 
 ## Command line
 
@@ -131,7 +130,7 @@ out["shortlist"]   # the follow-up shortlist
 | `shortlist.md` / `.json` | **Follow-up shortlist**: lines to re-measure at higher resolution, with tier, best pixels, window, grating and the questions to answer |
 | `emitter_report.md` / `.json` | Components and their type (`emitter line`, `broad`, `replica of #N`), g² flags and order, Voigt line shape, implied Huang–Rhys S, fit quality, residual limit by spectrum class, residual features |
 | `emitters.tsv` | Per spectrum and component: ZPL centre/ν/FWHM/area, sideband area/offset/FWHM, ZPL fraction, peak SNR, implied Huang–Rhys S |
-| `spectra.tsv` | Per spectrum: SSE, background, masked pixels (cosmic rays and clipped peaks), clipped pixels, max \|residual\|, residual / limit, pass flag, peak counts, peak SNR, spectrum class |
+| `spectra.tsv` | Per spectrum: SSE, background, masked pixels (cosmic rays and clipped peaks), clipped pixels, max \|residual\|, residual / limit, pass flag, peak counts, peak SNR, spectrum class, unexplained peaks (fit audit) |
 | `residual_features.json` / `.png` | Recurring residual bumps classified against the map: optical-phonon replica, possible separate emitter, or unclassified |
 | `basis.json` | Discovered components, sideband flags, centre windows, discovery history, held-out BIC |
 | `emitter_maps.png` | Per-component area maps (when a grid is known) |
@@ -202,9 +201,9 @@ It is a report: `spectra.tsv` gives each spectrum's max |r| and ratio to the lim
 
 | Map | substrate | weak | emitter |
 |---|---|---|---|
-| Tent map (pillar 6), 121 spectra | – | 39 spectra: 51 % / 56 % | 82: 95 % / 41 % |
-| Pillar 9 crop, 315 | – | 24: 71 % / 42 % | 291: 90 % / 2 % |
-| Pillar 9 full, 900 | 93: 94 % / 100 % | 446: 67 % / 80 % | 361: 96 % / 4 % |
+| Tent map (pillar 6), 121 spectra | – | 36 spectra: 56 % / 58 % | 85: 95 % / 42 % |
+| Pillar 9 crop, 315 | – | 22: 59 % / 32 % | 293: 94 % / 11 % |
+| Pillar 9 full, 900 | 90: 100 % / 100 % | 443: 88 % / 88 % | 367: 97 % / 13 % |
 
 Map-wide fractions are dominated by the substrate. On pillar-9 emitter spectra, the typical max |r| is about 350–570 counts on peaks of 4,000–13,000 counts. That is the line-shape and dense-cluster error that 150 g/mm cannot resolve, and the reason for the follow-up shortlist.
 
@@ -284,26 +283,43 @@ Broad components and phonon replicas are never listed.
 
 ### Local emitters
 
-The map-wide discovery keeps an emitter only if it matters in at least 3 % of the map, and it picks candidates from the map-averaged residual. A line present in a handful of pixels is diluted in that average, although such localized lines are prime single-photon candidates. The local pass (on by default since 2.5; `--no-local-emitters` skips it) runs after discovery:
-- **Candidates:** residual peaks ≥ 2× the residual limit, at least 0.6× the instrument width, and resolved from every fitted line.
-  - A peak inside a fitted phonon sideband is that sideband's shape residual only if it is about as broad as the sideband.
-  - A peak narrower than 0.7× the sideband width is a separate line, because a sideband is at least as broad as its ZPL (2.5).
-- **Patches:** candidates at the same wavelength (within half the strain range) that form connected patches of ≥ 2 spectra become one emitter. Its amplitude is allowed only in those patches and their 8-neighbourhood, so it cannot split a line elsewhere.
-- **Acceptance:** the emitter is kept if per-spectrum BIC improves in at least half of the patch and it stays resolved.
+The map-wide discovery keeps an emitter only if it matters in at least 3 % of the map, and picks candidates from the map-averaged residual. A line present in a handful of pixels is diluted in that average, although such localized lines are prime single-photon candidates. The local pass (on by default since 2.5; `--no-local-emitters` skips it) adds only the lines the data require.
 
-**Why it became the default.** On the full pillar-9 map, 2.4 missed sharp lines at 616–629 nm (up to about 1,500 counts) sitting on the 610 nm band-edge emission. The band-edge component's fitted sideband covered them, and they were too localized for the map-wide rule.
+**Candidates**, of two kinds:
+- **Residual peaks:** on the 3-pixel smoothed residual, ≥ 2× max(3σ, 3√y) of that spectrum. The noise level is used rather than the report's 100-count floor, which would make weak spectra blind.
+- **Unexplained resolved peaks of the data:** prominence ≥ 5× noise, where the fit is ≥ 3× noise too low and no fitted component is centred within half an instrument FWHM. A resolved maximum in the data is a line; a smooth misfit on a flank is not.
 
-| Map | 2.4 → 2.5 |
-|---|---|
-| Pillar 9 full (900) | The 628.95 nm line is fitted (shortlisted, ν_intrinsic 0.10); fit pass rate 0.79 → 0.81; spectra within the residual limit in 595–650 nm 79 % → 83 % |
-| Pillar 9 crop (315) | Fit pass rate 0.74 → 0.88; a new tier-1 line at 688.8 nm |
-| Tent map | Unchanged (the 695.35 nm g² emitter, its sideband and its 708.67 nm replica) |
-| 12 held-out synthetic maps | All metrics identical; the pass adds nothing there |
-| `tests/` | A synthetic band-edge map reproduces the 2.4 miss and the 2.5 fix |
+A candidate inside a fitted phonon sideband is a separate line when it is narrower than 0.7× the sideband width, because a sideband is at least as broad as its ZPL.
 
-**Limits:**
-- **One feature may be split into pieces:** 624.9, 626.5 and 629.0 nm on the full map. These may be one emitter shifting across the map or separate lines.
-- **Slower:** the full map takes about 74 s instead of 30 s.
+**Rules that keep the line count down:**
+- **No duplicates.** A candidate inside the ±3 nm strain window of an existing emitter line is that emitter. Only broad band-edge components leave room for narrow lines.
+- **Patches.** Candidates at the same wavelength in a connected patch of ≥ 2 spectra form one candidate line. Each patch is evaluated on its own. If a local line at that wavelength already exists, the patch extends it rather than adding another.
+- **Confinement.** A local line's amplitude is allowed only in its patches and their 8-neighbourhood. It is accepted if the per-spectrum BIC improves in at least half of the patch and it stays resolved.
+- **No fillers.** A local line is a localized emitter, never broader than the "broad" boundary.
+- **Completion.** A spectrum outside a local line's patch that shows an unexplained peak inside that line's window gets the line, if its own BIC improves clearly.
+- **Necessity.** At the end, each local line is removed again if the BIC in its patch does not get clearly worse without it.
+
+**Results, 2.4 → 2.5:**
+
+| Map | Fit pass rate | Spectra with an unexplained resolved peak (fit audit) |
+|---|---|---|
+| Pillar 9 full (900) | 0.79 → **0.93** | 368 → 106 |
+| Pillar 9 crop (315) | 0.74 → **0.92** | 219 → 140 |
+| Tent map (121) | 0.81 → **0.83** | 76 → 44 |
+
+The tent map keeps its 695.35 nm g² emitter and its 708.72 nm optical-phonon replica. On the 12 held-out synthetic maps, splits stay at 0.17 per map, and precision, recall, close-cluster recall, ν class accuracy and fit pass rate rise (see [Validation](#validation-and-limits)). An earlier build that started fits at the data maxima split dense clusters (0.58 splits per map), so it was dropped.
+
+**Cost:** the full 900-spectrum map takes about 5 minutes instead of 25 s. `--no-local-emitters` gives the fast map-wide fit.
+
+### Fit audit
+
+Every report ends with a fit audit. It counts the spectra that still show a resolved peak the fit does not explain, says where those peaks are, and lists the spectra to inspect first. `spectra.tsv` gives the unexplained peak positions per spectrum (`unexplained_peaks_nm`). At 150 g/mm these are typically crowded lines or sharp lines on band-edge emission, which are the least reliable fits and candidates for high-resolution follow-up.
+
+### Cosmic rays
+
+A run of ≤ 2 pixels far above the running median is masked as a cosmic ray only if it is isolated. The pixels just outside it must stay within 10 % of its height above the local baseline (10th percentile over ±15 pixels). Any real line is at least instrument-broadened, so its neighbouring pixels are elevated.
+
+Until 2.4 every short hot run was masked, which removed the tops of sharp real lines: 1,338 pixels on the full pillar-9 map and 130 on the tent map, including the 695 nm anchor line. With the 2.5 rule, the only pixels masked on the three reference maps are one true cosmic ray (spectrum 0655, 894 nm).
 
 ## Physics parameters
 
@@ -328,14 +344,16 @@ fastdecov fit spectra/ out/ --physics my.json
 
 **Synthetic maps.** V3's rules were tuned and frozen on synthetic maps with known emitters (Voigt lines, skewed sidebands, strain shifts, cosmic rays). On the 12 held-out maps:
 
-| Metric | V2 | V3 2.1 | V3 2.2+ |
+| Metric | V2 | V3 2.1 | V3 2.5 |
 |---|---|---|---|
 | splits per map (lower is better) | 2.08 | 0.33 | **0.17** |
-| precision | 0.73 | 0.914 | **0.924** |
-| recall | – | 0.852 | **0.886** |
-| ν class accuracy | 0.77 | 0.826 | **0.854** |
-| fit pass rate | – | 0.865 | **0.931** |
-| false-sideband rate (lower is better) | – | **0.29** | 0.33 |
+| precision | 0.73 | 0.914 | **0.934** |
+| recall | – | 0.852 | **0.905** |
+| ν class accuracy | 0.77 | 0.826 | **0.863** |
+| fit pass rate | – | 0.865 | **0.949** |
+| false-sideband rate (lower is better) | – | **0.29** | 0.31 |
+
+The last column is the current release (2.5.0). Sideband recall is 0.58 (0.67 with the 2.2–2.4 rules).
 
 **Limits:**
 - **Dense clusters.** Emitters closer than their linewidth cannot be resolved at 150 g/mm. V3 reports fewer, broader components and leaves structured residuals, as in pillar 9's 700–730 nm band. V2 fits them better, but its extra lines are not physical emitters.
@@ -354,9 +372,9 @@ fastdecov fit spectra/ out/ --physics my.json
 
 | Map | Spectra | Time |
 |---|---|---|
-| tent map | 121 | 8 s |
-| pillar-9 crop | 315 | 26 s |
-| full pillar-9 map | 900 | 74 s |
+| tent map | 121 | 18 s |
+| pillar-9 crop | 315 | 48 s |
+| full pillar-9 map | 900 | 294 s (about 25 s with `--no-local-emitters`) |
 
 V3 discovery and fitting alone take about 2–10 s. The original MATLAB code under Octave needs about 325 s for the 315-spectrum crop with fixed peaks, and fits it much worse.
 
@@ -372,7 +390,7 @@ To reproduce 2.0.0 V3 results with this package, use `pair_rule="mean"`, `bg_flo
 
 | Version | Changes |
 |---|---|
-| **2.5.0** | Local pass on by default (`--no-local-emitters` to skip); a peak much narrower than a fitted sideband is a separate line, so sharp lines on band-edge emission are found |
+| **2.5.0** | The cosmic-ray rule masks only isolated spikes, so line tops are no longer clipped. The local pass is on by default (`--no-local-emitters` to skip), with noise-based and unexplained-peak candidates, patch extension, per-spectrum completion, a necessity check and no broad fillers. Fit audit (`unexplained_peaks_nm`). Figures draw and label only the components present. |
 | **2.4.0** | Voigt line-shape report (Lorentzian width, extra Gaussian, ν_intrinsic); follow-up shortlist (`shortlist.md`); `g2_order`; `follow_up_gratings_meV` |
 | **2.3.0** | Residual-feature diagnostic: optical-phonon replica vs separate emitter, tested against the map; `optical_phonon_max_meV`; `replica of #N` labels |
 | **2.2.0** | Narrow lines on broad (band-edge) components; background floor ≥ −3σ; `broad` label |
