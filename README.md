@@ -1,306 +1,377 @@
 # SpecSmartDecov V2 (`fastdecov`)
 
-Fast emitter discovery and deconvolution of photoluminescence (PL) spectrum maps, for example strained GaSe single-photon emitters.
+Fast emitter discovery and deconvolution of photoluminescence (PL) spectrum maps, for example strained GaSe single-photon emitters. It is the successor of the MATLAB [SpecSmartDecov](https://github.com/arenasluo/SpecSmartDecov) and runs directly on raw spectra:
+- **Command line:** `fastdecov fit`.
+- **Python SDK:** `fastdecov.api`.
+- **No preset peaks:** the emitters, their centres and their phonon sidebands are discovered from each map.
+- **No preset map shape:** the map's rows × columns are detected automatically.
 
-This is the successor of the MATLAB [SpecSmartDecov](https://github.com/arenasluo/SpecSmartDecov). It runs directly on raw spectra:
-- **One command line:** `fastdecov fit`.
-- **A Python SDK:** `fastdecov.api`.
-- **No preset peaks:** the number of emitters, their centres and their phonon sidebands are discovered from each map.
+**What it is for.** `fastdecov` is a **preliminary screen** of a low-resolution map (for example 150 g/mm, about 3 meV resolution). At that resolution the instrument response hides the true line shape, so the screen does not try to give final line shapes. It finds the emitter lines, separates them from band-edge emission, phonon replicas and unresolved structure, and ends every run with a **follow-up shortlist**: which lines to re-measure with a higher grating, at which pixels and over which window.
+
+```text
+150 g/mm map ──► fastdecov fit ──► emitter report · line shape · residual diagnostics ──► shortlist.md
+                                                                                              │
+                         high-resolution spectra (600 / 2400 g/mm) and g²(0) at the shortlisted pixels ◄──┘
+```
+
+## Contents
+
+[Install](#install) · [Quick start](#quick-start) · [Methods](#methods) · [Command line](#command-line) · [Python SDK](#python-sdk) · [Outputs](#outputs) · [How the screen works](#how-the-screen-works) · [Physics parameters](#physics-parameters) · [Validation and limits](#validation-and-limits) · [Requirements and performance](#requirements-and-performance) · [Version history](#version-history) · [Repository contents](#repository-contents)
+
+## Install
 
 ```bash
-pip install .                                    # or: pip install -e .   (needs a C++ compiler, see Requirements)
-fastdecov fit path/to/spectra out/ --figures            # map shape is detected automatically
+git clone https://github.com/FDU-USTC-SJTU/SpecSmartDecov_V2.git
+cd SpecSmartDecov_V2
+pip install -e .            # or: pip install .
+fastdecov info              # version and C++ solver status
+```
+
+**Requirements:**
+- Python ≥ 3.10, with NumPy, SciPy and Matplotlib.
+- g++ (or clang++) with OpenMP, on Linux with glibc.
+
+The C++ solvers are compiled on first use; see [Requirements and performance](#requirements-and-performance).
+
+If `fastdecov` is not found, activate the environment it was installed in (for example `conda activate fastdecov`), or call it by its full path (`~/miniconda3/envs/fastdecov/bin/fastdecov`).
+
+## Quick start
+
+```bash
+fastdecov fit path/to/spectra out/my_map --figures --name my_map
+```
+
+- **Input:** `path/to/spectra` is a directory with one two-column text file per map pixel (wavelength in nm, intensity), read in sorted order. Descending wavelength is handled. Paths are relative to the current directory.
+
+**Files to open first in `out/my_map`:**
+1. **`shortlist.md`**: the lines worth a high-resolution follow-up, ranked, with best pixels, window and suggested grating.
+2. **`emitter_report.md`**: every fitted component, its type, the g² flags, and the line-shape, residual and replica sections.
+3. **`snr_map.png`, `emitter_maps.png`**: where the substrate, the emitters and each line are on the map.
+4. **`dc/dc_<id>.tif`**: the fit of each spectrum (with `--figures`).
+
+**Example:** the 121-spectrum tent map of the reference study (arXiv:2305.03230), on 12 threads, takes about 8 s:
+
+```text
+$ fastdecov fit pillar6_validation/output3-good out/pillar6 --name pillar6
+grid: 11x11 from spatial continuity (confidence 1.652); override with --grid ROWSxCOLS
+...
+Follow-up shortlist (shortlist.md):
+  1. tier 1  695.35 nm  nu_int 0.756  grating 600 g/mm  pixels 0053, 0063, 0074  (strong, isolated and sharp, extra Gaussian 6.34 meV)
+  2. tier 2  627.85 nm  nu_int 1.0  grating 2400 g/mm  pixels 0116, 0115, 0114  (not isolated, not sharp, extra Gaussian 14.89 meV)
+5 emitters (1 with phonon sideband); pass rate 0.81; residual limit met by 46% of spectra (41% of 82 emitter spectra); 7.7 s
 ```
 
 ## Methods
 
 | `--method` | Model | Use it for |
 |---|---|---|
-| **`v3`** (default) | **Physical emitters:** each one is a zero-phonon line (pseudo-Voigt), optionally with a phonon sideband tied to it on the red side. A shoulder within one linewidth of an emitter can only become its sideband, never a new line. Lines of similar width closer than 0.85 × their mean FWHM are not allowed. A narrow line on top of a much broader component (for example GaSe band-edge emission) is allowed when it is 0.85 × its own FWHM away; see [Broad components](#broad-components-and-the-background). | Single-photon-emitter work: one emitter stays one line, so ν (0 = Lorentzian, 1 = Gaussian) and the linewidth keep their meaning. |
-| `v2` | Data-driven basis of pseudo-Voigt lines, grown by held-out BIC (no anchors). | The best phenomenological fit. It can split one emitter into several unresolved lines. |
+| **`v3`** (default) | **Physical emitters.** Each one is a zero-phonon line (ZPL, pseudo-Voigt), optionally with a phonon sideband tied to it on the red side. A shoulder within one linewidth of an emitter can only become its sideband, never a new line. Lines of similar width must be at least 0.85 × their mean FWHM apart. A narrow line on a much broader component, such as GaSe band-edge emission, needs only 0.85 × its own FWHM. | Single-photon-emitter work: one emitter stays one line, so ν (0 = Lorentzian, 1 = Gaussian) and the linewidth keep their meaning. |
+| `v2` | A data-driven basis of pseudo-Voigt lines, grown by held-out BIC (no anchors). | The best phenomenological fit. It can split one emitter into several unresolved lines. |
 | `legacy` | The original SpecSmartDecov model: 12 fixed anchors (611 … 724 nm), constant background. | Compatibility with old `dc` results. |
 
-All three use the same fast solver: bound-constrained Levenberg–Marquardt with an analytic Jacobian, in C++ with OpenMP, parallel over spectra. It is compiled on first use.
+All three use the same solver: bound-constrained Levenberg–Marquardt with an analytic Jacobian, in C++ with OpenMP, parallel over spectra.
+
+**How V3 finds the emitters on a map:**
+1. Each spectrum is fitted on its own.
+2. Candidate lines are taken from where those fits cluster across the map.
+3. Emitters are added one at a time, while held-out BIC improves and the new line stays resolved; a red shoulder can only become a sideband.
+4. Unresolved, rare or unsupported emitters are pruned.
+
+The number of emitters is therefore a result, not an input: 5 on the tent map, 5 on the 315-spectrum pillar-9 crop, and 7 on the full 900-spectrum pillar-9 map.
 
 ## Command line
 
 ```text
 fastdecov fit INPUT_DIR OUTPUT_DIR [--method v3|v2|legacy] [--grid auto|none|ROWSxCOLS[s]] [--physics FILE]
               [--residual-limit FLOOR,K] [--snr-classes LOW,HIGH] [--no-residual-features] [--local-emitters]
-              [--threads N] [--figures] [--png]
-              [--name NAME] [--pattern '*.txt'] [--verbose]
+              [--threads N] [--figures] [--png] [--name NAME] [--pattern '*.txt'] [--verbose]
 fastdecov report OUTPUT_DIR            # print the emitter report of a finished run
 fastdecov physics [--template FILE]    # show / copy the physics parameters
 fastdecov info                         # version and solver status
 python -m fastdecov ...                # same as `fastdecov`
 ```
 
-- **`INPUT_DIR`** is a directory of spectra: one file per map pixel, with two columns (wavelength in nm, intensity). Files are read in sorted order, and descending wavelength is handled.
-- **`--grid`** sets the map shape, used for `emitter_maps.png`. The default, `auto`, first reads pixel coordinates from the file names (for example `x12_y07`), then infers the shape from the spectra (see [Map shape detection](#map-shape-detection)). `21x15` gives it explicitly (rows × columns in file order), `21x15s` declares a serpentine scan, and `none` skips the maps.
-- **`--residual-limit 100,3`** sets the per-pixel residual check |r| ≤ max(100, 3√y); see [Residual limit](#residual-limit).
-- **`--snr-classes 20,300`** sets the peak-SNR bounds of the substrate / weak / emitter classes; see [Spectrum classes](#spectrum-classes).
-- **`--local-emitters`** (V3, experimental) also adds emitters that exist only in a small connected patch of the map; see [Local emitters](#local-emitters-experimental).
-- **`--figures`** writes `dc/dc_<id>.tif`, one per spectrum: data, fit, background, each zero-phonon line, and the sidebands (dashed), plus a residual panel. Add **`--png`** for PNG copies.
-
-Example: the 121-spectrum tent map from the reference study, on 12 CPU threads, in about 6 s. The 11 × 11 shape is detected automatically:
-
-```bash
-fastdecov fit pillar6_validation/output3-good out/pillar6 --figures --name pillar6
-```
-
-Paths are relative to the current directory. If `fastdecov` is not found, activate the environment it was installed in (for example `conda activate fastdecov`).
+| Option | Default | Meaning |
+|---|---|---|
+| `--grid` | `auto` | Map shape. `auto` reads pixel coordinates from file names, else infers the shape from the spectra ([details](#map-shape)). `21x15` sets rows × columns in file order, `21x15s` a serpentine scan, and `none` skips the maps. |
+| `--physics` | GaSe pillars, 3.5 K, 150 g/mm | The physics JSON ([details](#physics-parameters)). |
+| `--residual-limit` | `100,3` | Per-pixel residual check \|r\| ≤ max(FLOOR, K√y), reported only ([details](#spectrum-classes-and-the-residual-limit)). |
+| `--snr-classes` | `20,300` | Peak-SNR bounds of the substrate / weak / emitter spectrum classes. |
+| `--no-residual-features` | off | Skip the phonon-replica and separate-emitter diagnostic (`residual_features.*` and the `replica of #N` labels). The Voigt line-shape report still runs. |
+| `--local-emitters` | off | V3, experimental: also add emitters confined to a small connected patch of the map ([details](#local-emitters-experimental)). |
+| `--threads` | all available | CPU threads. In a container with a CPU quota, set it (or `OMP_NUM_THREADS`) to the quota. |
+| `--figures`, `--png` | off | Write `dc/dc_<id>.tif` fit figures (data, fit, background, each ZPL, dashed sidebands, masked pixels, residual with the limit band); `--png` adds PNG copies. |
 
 ## Python SDK
 
 ```python
 from fastdecov import api
 
-m = api.load_map("pillar6_validation/output3-good")      # SpectrumMap(ids, xs, ys)
-res = api.fit_map(m, method="v3", threads=8)              # discovery + fit of every spectrum
-print(res.K, res.psb)                                     # emitters, sideband flags
-print([res.median(0, k) for k in range(res.K)])           # emitter centres (nm)
-res.table      # (spectra, emitters, 8): ZPL centre, ν, FWHM, ZPL area, PSB area, PSB offset, PSB FWHM, ZPL fraction
+m = api.load_map("pillar6_validation/output3-good")       # SpectrumMap(ids, xs, ys)
+api.detect_grid(m)                                         # {'rows': 11, 'cols': 11, 'method': 'spatial continuity', ...}
+res = api.fit_map(m, method="v3", threads=8)               # discovery + fit of every spectrum
+res.K, res.psb                                             # number of components, sideband flags
+[res.median(0, k) for k in range(res.K)]                   # centres (nm)
+res.table      # (spectra, components, 8): ZPL centre, ν, FWHM, ZPL area, PSB area, PSB offset, PSB FWHM, ZPL fraction
 res.params     # raw fit parameters per spectrum (layout in fastdecov/emitter.py)
-out = api.save(res, "out/pillar6", grid="auto", figures=True)   # or grid=(11, 11); api.detect_grid(m) to inspect
-out["ranking"], out["quality"]                            # emitter ranking and fit quality
+
+out = api.save(res, "out/pillar6", grid="auto", figures=True)
+out["ranking"]     # per component: kind, flags, line_shape (Voigt), g2_order, replica
+out["quality"]     # fit quality, residual limit, per-class results
+out["shortlist"]   # the follow-up shortlist
 ```
+
+`examples/sdk_example.py` prints the ranking and the shortlist of a map; `examples/fit_maps.sh` runs the two reference maps.
 
 ## Outputs
 
 | File | Content |
 |---|---|
-| `dc/dc_<id>.txt` | MATLAB `writer.m` format, one row per emitter: zero-phonon centre, ν, FWHM, area |
-| `dc/dc_<id>.tif` | fit figure (with `--figures`) |
-| `emitters.tsv` | per spectrum and emitter: ZPL centre/ν/FWHM/area, sideband area/offset/FWHM, ZPL fraction, peak SNR, implied Huang–Rhys S |
-| `spectra.tsv` | per spectrum: SSE, background, masked pixels (cosmic rays and clipped peaks), clipped pixels, max \|residual\|, residual / limit, residual-limit pass flag, peak counts, peak SNR, spectrum class |
-| `basis.json` | discovered emitters, sideband flags, centre windows, discovery history, held-out BIC |
-| `emitter_report.md` / `.json` | emitter ranking (below), fit quality and the residual-limit summary |
-| `emitter_maps.png` | per-emitter area maps (when a grid is known) |
-| `shortlist.md` / `.json` | **follow-up shortlist**: lines to re-measure with a higher grating, where (best pixels) and over which window; see [Follow-up shortlist](#follow-up-shortlist) |
-| `residual_features.json` / `.png` | recurring residual bumps classified against the map (phonon replica / possible separate emitter / unclassified) and where they occur |
-| `snr_map.png` | peak-SNR map and the substrate / weak / emitter classes (when a grid is known) |
-| `run.json` | version, settings, physics, detected grid (with its confidence and candidates), timings |
+| `shortlist.md` / `.json` | **Follow-up shortlist**: lines to re-measure at higher resolution, with tier, best pixels, window, grating and the questions to answer |
+| `emitter_report.md` / `.json` | Components and their type (`emitter line`, `broad`, `replica of #N`), g² flags and order, Voigt line shape, implied Huang–Rhys S, fit quality, residual limit by spectrum class, residual features |
+| `emitters.tsv` | Per spectrum and component: ZPL centre/ν/FWHM/area, sideband area/offset/FWHM, ZPL fraction, peak SNR, implied Huang–Rhys S |
+| `spectra.tsv` | Per spectrum: SSE, background, masked pixels (cosmic rays and clipped peaks), clipped pixels, max \|residual\|, residual / limit, pass flag, peak counts, peak SNR, spectrum class |
+| `residual_features.json` / `.png` | Recurring residual bumps classified against the map: optical-phonon replica, possible separate emitter, or unclassified |
+| `basis.json` | Discovered components, sideband flags, centre windows, discovery history, held-out BIC |
+| `emitter_maps.png` | Per-component area maps (when a grid is known) |
+| `snr_map.png` | Peak-SNR map and the substrate / weak / emitter classes (when a grid is known) |
+| `dc/dc_<id>.txt` | MATLAB `writer.m` format, one row per component: ZPL centre, ν, FWHM, area |
+| `dc/dc_<id>.tif` | Fit figure (with `--figures`) |
+| `run.json` | Version, settings, physics, detected grid (confidence and candidates), timings |
 
-### Emitter ranking
+## How the screen works
 
-Each emitter is flagged as follows:
-- **strong:** peak ≥ 50 σ;
-- **isolated:** no other emitter within 1.5 × FWHM;
+### Component types and the g² flags
+
+Every fitted component gets a type:
+- **emitter line:** a candidate single emitter.
+- **broad:** FWHM more than 5 × the instrument FWHM. For example GaSe band-edge emission around 600–650 nm, or an unresolved ensemble. It is fitted, but never a g² candidate.
+- **replica of #N:** a fitted line that the map shows is an optical-phonon replica of emitter N ([details](#phonon-replicas-and-separate-emitters)). It is never a g² candidate.
+
+An emitter line is flagged **g² priority** when it is:
+- **strong:** peak ≥ 50σ;
+- **isolated:** no other component within 1.5 × FWHM;
 - **sharp:** FWHM ≤ 3 × the instrument FWHM at its wavelength.
 
-Emitters that are all three are flagged as **g² priority**: the best candidates for photon-correlation measurements.
+Among g²-priority lines, `g2_order` ranks the more Lorentzian ones first (lower ν_intrinsic; see [Line shape](#line-shape-voigt-decomposition)).
 
-**Implied Huang–Rhys factor.** For emitters with a sideband, the report and `emitters.tsv` give S = −ln(ZPL fraction). The ZPL fraction is the Debye–Waller factor, which equals e^(−S) for linear coupling to a single phonon mode at low temperature. This is a model-dependent estimate, not a fit of the phonon structure:
-- the Gaussian sideband's area is approximate;
-- an unresolved neighbouring emitter inside the sideband would raise it.
+The fitted ν is reported, not used as a gate. At 150 g/mm, a true single-photon emitter can look Gaussian-dominated: the antibunched ~692 nm emitter of the reference study (g²(0) = 0.43) has ν ≈ 0.8, because the instrument response and spectral diffusion broaden it. Confirmation needs g²(0) < 0.5 or a high-resolution spectrum, which is what the shortlist is for.
 
-It is not used in any decision. Examples: the tent map's 695.33 nm g²-priority emitter has a ZPL fraction of 0.948, so S ≈ 0.05; pillar 9's 709.5 nm emitter has 0.765, so S ≈ 0.27. The sideband is deliberately kept a simple Gaussian. A physical sideband shape follows from Franck–Condon factors and the phonon spectrum, and a free skew parameter would also hide unresolved neighbouring emitters.
+**Implied Huang–Rhys factor.** For emitters with a sideband, S = −ln(ZPL fraction). The ZPL fraction is the Debye–Waller factor, e^(−S) for linear coupling to one phonon mode at low temperature.
+- It is a model-dependent estimate: the Gaussian sideband area is approximate, and an unresolved neighbour inside the sideband would raise it.
+- It is not used in any decision.
+- Example: the tent map's 695 nm emitter has S ≈ 0.05; pillar 9's 709.5 nm feature has S ≈ 0.27.
 
-ν and the sideband's zero-phonon fraction are reported but not used as gates. At low spectral resolution, a true single-photon emitter can look Gaussian-dominated: in the reference study, the antibunched ~692 nm emitter (g²(0) = 0.43) has ν ≈ 0.8 at 150 g/mm, because unresolved exciton/biexciton structure and spectral diffusion broaden it. Confirmation needs g²(0) < 0.5 or a high-resolution spectrum.
+The sideband is deliberately a simple Gaussian. A physical sideband shape follows from Franck–Condon factors and the phonon spectrum, and a free skew parameter would also hide unresolved neighbouring emitters.
 
-## Map shape detection
+### Broad components and the background
 
-`--grid auto` (the default) works in two steps:
-1. **File names.** If every file name holds two integers that form a complete rows × columns grid, those are the pixel coordinates.
-2. **Spatial continuity.** Otherwise the shape comes from the spectra in file order. For each candidate width W and scan order (row by row, or serpentine), it compares the spectral distance from each pixel to the pixel "below" it with the distance between neighbours in the same row, using the spectra's first 8 principal components. The true shape gives the smallest ratio. The shape is accepted only if the runner-up is at least 10 % worse; otherwise no grid is used and a message says so.
+**Narrow lines on broad components.** For a pair whose widths differ by at least 2×, the narrow line is resolved at 0.85 × its own FWHM from the broad centre, so emitters on top of band-edge emission are found.
+- **Guard:** the broad component's spatial map must not simply track the narrow line (share-map correlation < 0.8). A pedestal that tracks a narrow line is how splitting fakes Lorentzian wings.
+- **Similar-width pairs** keep the 0.85 × mean-FWHM rule.
 
-On the three measured maps (11 × 11, 21 × 15 and 30 × 30), including their serpentine and column-by-column reorderings, the correct shape won in all 12 cases, by at least 15 %. Row-by-row and column-by-column order cannot be told apart, since that only transposes the map image. `run.json` records the method, the confidence and the top candidates.
+**Background floor.** The linear background may not fall below −3 noise σ anywhere in the window, so the tails of strong lines are explained by the lines, not by a tilted background.
 
-## Residual limit
+The 2.1 behaviour can be restored with `basis3.OPTS3` options `pair_rule="mean"` and `bg_floor_sigma=None`.
 
-Every fitted pixel is checked against |residual| ≤ max(FLOOR, K·√y), by default max(100, 3√y):
-- **The floor** covers the baseline and weak lines.
-- **The √y term** is a shot-noise-like allowance that grows with the signal. When counts are close to detected photons, √y is the Poisson noise, so a fixed absolute limit would demand fitting below the noise on strong peaks.
+**Clipped peaks.** Measured spectra never repeat exactly the same value over several pixels on a peak. Runs of ≥ 3 identical values in the upper half of a spectrum are therefore treated as clipping (saturation or a capped export) and masked, with one pixel on each side, like cosmic rays (V3 and V2). On the tent map, 19 of 121 spectra have a flat-topped 695 nm peak.
 
-`spectra.tsv` gives each spectrum's max |r|, its worst |r| / limit and a pass flag. The report gives the fraction of spectra that pass and the worst ones, and the `.tif` figures draw the limit band. The check is a report; it does not change the fit.
+### Map shape
 
-**Clipped peaks.** Measured spectra never repeat exactly the same value over several pixels on a peak, so runs of ≥ 3 identical values in the upper half of a spectrum are treated as clipping (saturation, or a capped export). They are masked, together with one pixel on each side, in the same way as cosmic rays, and counted in `clipped_pixels`. This applies to V3 and V2; the legacy method is unchanged. On the reference tent map, 19 of 121 spectra have a flat-topped 695 nm peak. Masking them raises its fit pass rate from 0.72 to 0.81 and keeps the same 4 emitters and the same g²-priority emitter. Maps without clipping give byte-identical results to 2.0.0.
+`--grid auto` works in two steps:
+1. **File names.** If every file name holds two integers that form a complete rows × columns grid (for example `x12_y07`), those are the pixel coordinates.
+2. **Spatial continuity.** Otherwise the shape comes from the spectra in file order. For each candidate width and scan order (row by row or serpentine), it compares the spectral distance from each pixel to the pixel "below" with the distance to the next pixel in the same row, using the first 8 principal components. The true shape gives the smallest ratio.
 
-## Spectrum classes
+The shape is accepted only if the runner-up is at least 10 % worse; otherwise no grid is used and a message says so. On the three measured maps (11 × 11, 21 × 15, 30 × 30) and their serpentine and column-by-column reorderings, the correct shape won 12 of 12 times, by at least 15 %. Row-by-row and column-by-column order cannot be told apart, because that only transposes the image.
 
-A map mixes spectra taken on the substrate, which are weak, with spectra taken on the emitters, which have high S/N. Each spectrum is classed by its peak SNR (peak above the edge baseline, divided by the noise sigma):
-- **substrate:** below 20σ, the census "emitting" threshold;
-- **weak:** 20σ up to 300σ;
-- **emitter:** 300σ and above.
+### Spectrum classes and the residual limit
 
-The bounds can be set with `--snr-classes LOW,HIGH`. Fit quality and the residual limit are reported per class, because map-wide fractions are dominated by whichever class has more pixels. Substrate spectra meet an absolute residual limit almost trivially, and a relative one is strict for weak spectra.
+A map mixes weak substrate spectra with high-S/N emitter spectra, so quality is reported per class:
+- **substrate:** peak SNR < 20;
+- **weak:** 20–300;
+- **emitter:** ≥ 300.
 
-**Default V3** (fit pass rate / residual limit max(100, 3√y) met):
+Every fitted pixel is also checked against **|r| ≤ max(100, 3√y)**:
+- the floor covers the baseline and weak lines;
+- the √y term is a shot-noise-like allowance that grows with the signal.
+
+It is a report: `spectra.tsv` gives each spectrum's max |r| and ratio to the limit, and the figures draw the band.
+
+**Default V3, 2.4.0** (fit pass rate / residual limit met):
 
 | Map | substrate | weak | emitter |
 |---|---|---|---|
-| Tent map (pillar 6, 121) | – | 39 spectra: 51 % / 56 % | 82 spectra: 95 % / 41 % |
-| Pillar 9 crop (315) | – | 24: 62 % / 42 % | 291: 75 % / 1 % |
-| Pillar 9 full (900) | 93: 94 % / 100 % | 446: 63 % / 77 % | 361: 96 % / 4 % |
+| Tent map (pillar 6), 121 spectra | – | 39 spectra: 51 % / 56 % | 82: 95 % / 41 % |
+| Pillar 9 crop, 315 | – | 24: 62 % / 42 % | 291: 75 % / 1 % |
+| Pillar 9 full, 900 | 93: 94 % / 100 % | 446: 63 % / 77 % | 361: 96 % / 4 % |
 
-On the emitter spectra of pillar 9, the typical max |r| is about 550 counts on peaks of 4,000–13,000 counts, a 4–6 % line-shape error at the peak. That, and not the substrate, is what the residual limit exposes.
+Map-wide fractions are dominated by the substrate. On pillar-9 emitter spectra, the typical max |r| is about 350–570 counts on peaks of 4,000–13,000 counts. That is the line-shape and dense-cluster error that 150 g/mm cannot resolve, and the reason for the follow-up shortlist.
 
-## Broad components and the background
+### Phonon replicas and separate emitters
 
-**Broad components.** Some features are much broader than the instrument (FWHM 9–30 nm against about 1 nm), for example GaSe band-edge emission around 600–650 nm. They are real and are fitted.
-- **How they are reported.** A component wider than 5 × the instrument FWHM is labelled **broad** in the emitter table, with the note "e.g. GaSe band-edge emission or an unresolved ensemble". It is never a g² candidate.
-- **The 2.0/2.1 problem.** Resolvability used 0.85 × the *mean* FWHM of a pair, so a 26 nm band created a ±12 nm exclusion zone. Narrow emitters on top of it could not be added, and V3 covered whole bands with a few broad blobs.
-- **The 2.2 rule.** For a pair whose widths differ by at least 2×, the narrow line is resolved if it is at least 0.85 × *its own* FWHM from the broad centre. One guard remains: the broad component's spatial map must not simply track the narrow line (share-map correlation < 0.8). A pedestal that tracks a narrow line is how splitting fakes Lorentzian wings, while a real band has its own spatial distribution.
-- **Similar-width pairs** keep the 0.85 × mean-FWHM rule.
-
-**Background floor.** The linear background may not drop below −3 noise σ anywhere in the window, so the tails of strong lines must be explained by the lines and not by a tilted background. Fits that violate the floor are refitted with bounds that guarantee it.
-
-`basis3.OPTS3`: `pair_rule="mean"` and `bg_floor_sigma=None` restore the 2.1 behaviour.
-
-**Held-out synthetic maps** (12 maps with known emitters, the set used to freeze V3):
-
-| | 2.1 rules | 2.2 rules |
-|---|---|---|
-| splits per map (lower is better) | 0.33 | **0.17** |
-| precision | 0.914 | **0.924** |
-| recall | 0.852 | **0.886** |
-| close-cluster recall | 0.49 | **0.56** |
-| ν class accuracy | 0.826 | **0.854** |
-| fit pass rate | 0.865 | **0.931** |
-| sideband recall | 0.58 | **0.67** |
-| false-sideband rate (lower is better) | **0.29** | 0.33 |
-
-**Real maps:**
-- **Full pillar-9 map.** A narrow 683.6 nm line is now resolved on top of a broad 680 nm feature, and the broad filler component under 710/718/725 nm is gone. The emitter-class fit pass rate rises from 72 % to 96 %.
-- **Tent map.** The 600–650 nm band gains a resolved 628/635 nm structure on top of the band-edge components. 695.35 nm stays the only g²-priority emitter.
-- **Pillar-9 crop.** Unchanged.
-
-**Not modelled on purpose:** a weak line at about 708 nm on the red tail of the tent map's 695 nm emitter. The map shows it is an optical-phonon replica; see [Phonon replicas and separate emitters](#phonon-replicas-and-separate-emitters).
-
-## Phonon replicas and separate emitters
-
-A structured residual can be an unresolved separate emitter or a phonon replica of a fitted emitter, and a single spectrum cannot tell which. The map can. For every recurring residual bump (≥ 5σ in ≥ 5 spectra, away from masked pixels and from line cores), and for every pair of fitted emitter lines, `fastdecov` tests the redder feature against each bluer emitter line over the spectra where it occurs:
+A structured residual can be a phonon replica of a fitted emitter or an unresolved separate emitter. One spectrum cannot tell which, but the map can. Every recurring residual bump (≥ 5σ in ≥ 5 spectra, away from masked pixels and line cores) and every pair of fitted emitter lines is tested: the redder feature against each bluer emitter line, over the spectra where it occurs.
 
 | Test | Requirement for a phonon replica |
 |---|---|
-| presence | it occurs only where the emitter is present (≥ 95 % of its spectra) |
-| constant offset | the energy offset to the emitter is constant across the map: interquartile range ≤ 0.5 × instrument resolution |
-| follows the shift | its energy follows the emitter's strain shift: slope 0.7–1.3, tested when the emitter shifts by ≥ 0.25 × instrument resolution |
-| width | FWHM ratio to the emitter 0.7–2 |
-| phonon energy | offset between 2 × instrument resolution (a discrete line, not the acoustic sideband) and `optical_phonon_max_meV` in the physics JSON (40 meV for GaSe) |
-| intensity | its area rank-correlates with the emitter's across the map (Spearman ≥ 0.5) |
+| presence | occurs only where the emitter is present (≥ 95 % of its spectra) |
+| constant offset | energy offset to the emitter is constant across the map: IQR ≤ 0.5 × instrument resolution |
+| follows the shift | its energy follows the emitter's strain shift: slope 0.7–1.3 (tested when the emitter shifts ≥ 0.25 × resolution) |
+| width | FWHM ratio 0.7–2 |
+| phonon energy | offset between 2 × resolution (a discrete line, not the acoustic sideband) and `optical_phonon_max_meV` (40 meV for GaSe) |
+| intensity | area rank-correlates with the emitter's across the map (Spearman ≥ 0.5) |
 
-A feature that passes all six is reported as an **optical-phonon replica** of that emitter, with its energy offset and area ratio. A fitted line that passes is labelled `replica of #N` in the emitter table and is never a g² candidate.
+**Classifications:**
+- **optical-phonon replica:** passes all six tests.
+- **possible replica (presence test uninformative):** passes all six, but the emitter is absent from less than 10 % of the map. Two independent map-wide emitters sharing the strain field can pass every test, so this is never reported as a confirmed replica.
+- **possible separate emitter:** occurs where no candidate parent is present.
+- **unclassified:** anything else.
 
-The presence test is meaningful only if the emitter is absent somewhere. When the emitter is absent from less than 10 % of the map, two independent map-wide emitters sharing the strain field can pass every test, so the result is reported only as a **possible replica (presence test uninformative)**. A bump that occurs where no candidate parent is present (≥ 20 % of its spectra) is reported as a **possible separate emitter**; anything else is unclassified. Nothing is fitted away: the fit is unchanged. `--no-residual-features` skips the diagnostic.
+Nothing is fitted away.
 
 **Results:**
-- **Tent map.** The 708.67 nm line (25 spectra) is an optical-phonon replica of the 695.99 nm emitter:
-  - offset 31.9 meV, interquartile range 1.2 meV;
-  - width ratio 1.29, area ratio 0.56 %, rank correlation 0.85;
-  - the emitter is absent from about 21 % of the map, so the presence test is informative.
+- **Tent map.** The 708.67 nm line (25 spectra) is an optical-phonon replica of the 695.99 nm emitter: offset 31.9 meV (IQR 1.2 meV), width ratio 1.29, area ratio 0.56 %, Spearman 0.85. The assignment was confirmed by the authors from the map.
+- **Pillar 9 full map.** Recurring bumps near 600–630 and 703 nm are possible separate emitters.
+- **Synthetic check.** On the 12 held-out synthetic maps, which contain no discrete replicas, no replica and no separate emitter is reported.
 
-  The user confirmed this assignment from the map.
-- **Pillar 9.** Recurring bumps at about 600–630, 673, 689 and 703 nm are reported as possible separate emitters: they occur where no candidate parent line is present.
-- **Synthetic check.** On the 12 held-out synthetic maps (truth: no discrete replicas) the diagnostic reports no replica and no separate emitter. One independent map-wide pair (656/669 nm) is caught by the presence rule.
+### Line shape (Voigt decomposition)
 
-## Follow-up shortlist
+An ideal zero-phonon line is Lorentzian (ν → 0). The spectrometer convolves it with its Gaussian response, and spectral diffusion or unresolved structure add more Gaussian width.
 
-fastdecov is a **preliminary screen**. At 150 g/mm the instrument response (3.25 meV) hides the true line shape, so every run ends with `shortlist.md` / `shortlist.json`, which list the lines worth re-measuring with a higher grating.
+**Method.** For each emitter line, in every strong, unclipped spectrum (≥ 50σ, ≥ 10 % of the line area):
+1. The line is isolated: data minus background and every other component.
+2. It is refitted as a true Voigt, with the Gaussian FWHM at least the instrument's.
+
+**Reported per line:**
+- **Lorentzian (homogeneous) FWHM:** flagged when below half the instrument FWHM.
+- **Extra Gaussian beyond the instrument (meV):** flagged **broadened** when larger than the instrument resolution.
+- **ν_intrinsic:** ν with the instrument removed. It is a *direction* towards an ideal ZPL, used to order candidates, never a gate.
+
+The fit itself is unchanged. Forcing ν → 0 would make the tent map's 695 nm line fit about 10× worse (reduced χ² 35 against 3.5). Its decomposition: 1.3 meV Lorentzian plus 6.3 meV extra Gaussian, ν_intrinsic 0.76.
+
+**Synthetic check** (59 lines, true widths known):
+
+| Quantity | Correlation with truth |
+|---|---|
+| Lorentzian FWHM | 0.95 |
+| extra Gaussian | 0.96 |
+| ν_intrinsic | 0.94 |
+
+The Lorentzian-dominated class (ν_intrinsic ≤ 0.5) is correct for 97 % of lines, against 90 % with the fitted ν.
+
+### Follow-up shortlist
 
 **Tiers:**
-1. **Tier 1: g² priority** (strong, isolated, sharp), ordered by **ν_intrinsic**. ν_intrinsic is ν with the instrument removed (see [Line shape](#line-shape-voigt-decomposition)). The more Lorentzian, the closer to an ideal zero-phonon line: a *direction*, never a gate.
-2. **Tier 2: other strong emitter lines** (peak ≥ 50σ) that are crowded, not sharp, or broadened. The higher grating should show whether each is a single emitter.
-3. **Tier 3: possible separate emitters** left in the residual (see [Phonon replicas and separate emitters](#phonon-replicas-and-separate-emitters)).
+1. **Tier 1:** g²-priority lines, ordered by ν_intrinsic (most Lorentzian first).
+2. **Tier 2:** other strong emitter lines that are crowded, not sharp, or broadened. The higher grating should show whether each is a single emitter.
+3. **Tier 3:** possible separate emitters from the residual diagnostic.
 
 Broad components and phonon replicas are never listed.
 
-**Per line:** centre (nm and eV), widths, ν fit → intrinsic, the three best pixels (spectrum and grid position, where the line is strong and dominant), a spectral window (including the sideband), and the questions the measurement should answer. The suggested grating is the coarsest one in the physics JSON (`follow_up_gratings_meV`: 600 g/mm ≈ 0.3 meV, 2400 g/mm ≈ 0.03 meV) whose resolution is at most half the estimated Lorentzian width, or the finest one if that is unknown or smaller.
+**For each line, the shortlist gives:**
+- the centre in nm and eV;
+- the widths, and ν fit → intrinsic;
+- the three best pixels (spectrum and grid position);
+- a spectral window, including the sideband;
+- the questions to answer;
+- a suggested grating: the coarsest in `follow_up_gratings_meV` (600 g/mm ≈ 0.3 meV, 2400 g/mm ≈ 0.03 meV) whose resolution is at most half the estimated Lorentzian width, or the finest if that width is unknown or smaller.
 
-**Example, full pillar-9 map:**
-1. **724.86 nm** (tier 1, ν_intrinsic 0.0): 600 g/mm at pixels 0465/0466/0558.
-2. **718.15 nm** (tier 1, ν_intrinsic 1.0, 8 meV extra Gaussian): 2400 g/mm.
-3. **683.61 nm and 733.38 nm** (tier 2).
-4. **703, 617, 601 and 629 nm** (tier 3).
+| Map | Shortlist (rank: line, tier, ν_intrinsic, grating) |
+|---|---|
+| Tent map | 1: **695.35 nm**, tier 1, 0.76, 600 g/mm, pixels 0053/0063/0074 · 2: 627.85 nm, tier 2, 1.0, 2400 g/mm |
+| Pillar 9 full | 1: **724.86 nm**, tier 1, 0.0, 600 g/mm, pixels 0465/0466/0558 · 2: 718.15 nm, tier 1, 1.0, 2400 g/mm · 3–4: 683.61, 733.38 nm, tier 2 · then possible separate emitters (703, 617, 601, 629 nm …) |
+| Pillar 9 crop | 718.11 and 724.24 nm, tier 2 (not isolated in this crop) · possible separate emitters 689, 703, 674, 621 nm |
 
-On the tent map, the 695.35 nm emitter is tier 1: 600 g/mm at pixels 0053/0063/0074.
+### Local emitters (experimental)
 
-## Line shape (Voigt decomposition)
+V3 keeps an emitter only if it matters in at least 3 % of the map, so a line present in a handful of pixels can be missed. `--local-emitters` adds a pass after discovery:
+- **Candidates:** residual peaks ≥ 2× the residual limit, at least 0.6× the instrument width, and resolved from every fitted line.
+- **Patches:** candidates at the same wavelength (within half the strain range) that form connected patches of ≥ 2 spectra become one emitter, allowed only in those patches and their 8-neighbourhood.
+- **Acceptance:** the emitter is kept if per-spectrum BIC improves in at least half of the patch and it stays resolved.
 
-An ideal zero-phonon line is Lorentzian (ν → 0). The spectrometer convolves it with its Gaussian response, and spectral diffusion or unresolved structure add more Gaussian width, so the fitted pseudo-Voigt ν mixes all of these. For each emitter line, in every strong, unclipped spectrum (≥ 50σ, ≥ 10 % of the line area), the line is isolated: data minus background and every other fitted component. It is then refitted as a true Voigt with the Gaussian ≥ the instrument FWHM. The report gives, per line:
-- **Lorentzian (homogeneous) FWHM.** Flagged when it is below half the instrument FWHM, where 150 g/mm cannot pin it down.
-- **Gaussian FWHM, and the extra Gaussian beyond the instrument in meV.** Flagged **broadened** when the extra is larger than the instrument resolution.
-- **ν_intrinsic:** the pseudo-Voigt ν equivalent to the line with the instrument removed (Thompson–Cox–Hastings).
-
-The fit itself is unchanged; forcing ν → 0 makes the 695 nm line fit about 10× worse (reduced χ² 35 against 3.5).
-
-**Synthetic check** (59 emitter lines on the held-out maps, true widths known):
-
-| Quantity recovered | Correlation with truth | Typical error |
-|---|---|---|
-| Lorentzian FWHM | 0.95 | 0.05 nm |
-| extra Gaussian | 0.96 | 0.08 nm |
-| ν_intrinsic | 0.94 | 0.03 |
-
-The Lorentzian-dominated class (ν_intrinsic ≤ 0.5) is right for 97 % of lines, against 90 % with the fitted ν.
-
-**Tent map, 695.35 nm:** Lorentzian 1.3 meV, extra Gaussian 6.3 meV, ν_intrinsic 0.76. The line is broadened, and its Lorentzian width is below the resolution, so it is followed up at a higher grating.
-
-## Local emitters (experimental)
-
-V3 keeps an emitter only if it matters in at least 3 % of the map, so an emitter present in a handful of pixels can be missed, although such localized lines are prime single-photon candidates. `--local-emitters` adds a pass after discovery:
-- **Candidates.** It looks for residual peaks that are ≥ 2× the residual limit, at least 0.6× the instrument width, and resolved from every fitted emitter in that spectrum.
-- **Patches.** Candidates at the same wavelength (within half the strain range) that form spatially connected patches of ≥ 2 spectra become one emitter. Its amplitude is allowed only in those patches and their 8-neighbourhood, so it cannot split a line elsewhere.
-- **Acceptance.** It is kept if per-spectrum BIC improves in at least half of the patch and it stays resolved there.
-
-| Map | Emitters added | Fit pass rate (default → local) | Residual-limit pass | Time |
-|---|---|---|---|---|
-| Tent map (pillar 6) | 0 | 0.81 → 0.81 | 46 % | 6 s |
-| Pillar 9 crop (315) | 4 (e.g. 672.5 nm in 28 spectra, 627.3 nm in 2) | 0.74 → 0.83 | 4 % → 5 % | 7 → 16 s |
-| Pillar 9 full (900) | 10 | 0.66 → 0.72 | 46 % → 48 % | 10 → 45 s |
-
-It finds real localized lines, but it barely changes the residual-limit pass fraction, and nearby patches of one strain-shifted emitter can still become two emitters (672.5 and 674.2 nm on the full map). It therefore stays opt-in.
+Measured with 2.1 on the pillar-9 crop, it added 4 emitters (for example 672.5 nm in 28 spectra) and raised the fit pass rate from 0.74 to 0.83. It barely changes the residual-limit fraction, can split one strain-shifted emitter into two patches, and is 2–4× slower, so it stays opt-in. The residual diagnostic's "possible separate emitters" point to the same lines without changing the fit.
 
 ## Physics parameters
 
-The instrument resolution and the strain-shift range come from the experiment, not from the code. The default, `fastdecov/physics/gase_pillar_4K.json`, comes from the reference manuscript (arXiv:2305.03230), with provenance in the file:
+The instrument and the sample physics come from the experiment, not from the code. The default, `fastdecov/physics/gase_pillar_4K.json`, is taken from the reference manuscript (arXiv:2305.03230), with provenance in the file.
 
-| parameter | value | meaning |
+| Parameter | Value | Used for |
 |---|---|---|
-| `instrument_resolution_meV` | 3.25 | 150 g/mm grating, about 1.0 nm at 620 nm and 1.3 nm at 700 nm; sets the "sharp" flag |
-| `strain_shift_halfrange_nm` | 3.0 | how far one emitter's line may move across the map (strain); sets each emitter's centre window |
+| `instrument_resolution_meV` | 3.25 | 150 g/mm grating (about 1.0 nm at 620 nm, 1.3 nm at 700 nm): "sharp" flag, Voigt instrument width, replica tests |
+| `strain_shift_halfrange_nm` | 3.0 | how far one emitter may move across the map: centre windows, grouping of residual features |
+| `optical_phonon_max_meV` | 40 | upper bound of an optical-phonon replica offset. GaSe's highest optical mode is ~38 meV; please confirm for your material. |
+| `follow_up_gratings_meV` | 600 g/mm: 0.3, 2400 g/mm: 0.03 | gratings offered in the shortlist |
 | `temperature_K` | 3.5 | documentation |
 
-For another sample or spectrometer, run `fastdecov physics --template my.json`, edit the values from your own setup or manuscript, and pass `--physics my.json`.
+For another sample or spectrometer:
 
-## Requirements and performance
-
-- **Python and libraries:** Python ≥ 3.10, NumPy, SciPy, Matplotlib.
-- **A C++ compiler:** g++ (or clang++) with OpenMP, on Linux with glibc, because the vectorised `exp` comes from libmvec. Solvers are compiled on first use into the package's `native/`, or into `$FASTDECOV_BUILD_DIR` or `~/.cache/fastdecov` when that is read-only.
-- **Optional GPU:** a CUDA path for the legacy method (`pip install .[gpu]`, see `analysis.py`).
-
-**Timing.** On a 20-core desktop, V3 discovery plus fitting takes about 2–8 s for a 315-spectrum map. The original MATLAB code under Octave takes about 325 s for the same map with fixed peaks, and fits it much worse.
-
-**Other languages.** The algorithm has also been ported to C++, Rust, Fortran, Julia, Java, Go, Numba and CUDA. All ports give byte-identical results, and Go was the fastest. Those ports and their benchmark are kept in the development repository; this package ships the Python + C++ implementation.
+```bash
+fastdecov physics --template my.json     # edit the values from your setup or manuscript
+fastdecov fit spectra/ out/ --physics my.json
+```
 
 ## Validation and limits
 
-- **Synthetic validation.** V3's rules were tuned and then frozen on synthetic maps with known emitters. On held-out maps, V3 2.0 compared with V2:
-  - splits per map: 0.33 against 2.08;
-  - precision: 0.91 against 0.73;
-  - correct ν class: 0.83 against 0.77.
+**Synthetic maps.** V3's rules were tuned and frozen on synthetic maps with known emitters (Voigt lines, skewed sidebands, strain shifts, cosmic rays). On the 12 held-out maps:
 
-  The 2.2 resolvability rule improves these further, to 0.17 splits per map, 0.92 precision and 0.85 correct ν class; see [Broad components](#broad-components-and-the-background).
-- **Dense clusters.** Emitters closer together than their linewidth cannot be resolved at 150 g/mm. V3 then reports fewer, broader emitters and leaves structured residuals: the 700–730 nm band of the reference pillar-9 map has a pass rate of 0.74. V2 fits these clusters better, but its extra lines are not physical emitters.
-- **Sideband shape.** The sideband is modelled as a Gaussian, while real acoustic sidebands are skewed.
-- **Residual limit.** Most spectra that fail max(100, 3√y) fail on line shape or dense clusters, not on missing emitters (see [Residual limit](#residual-limit)).
-- **Other languages.** The C++, Rust, Fortran, Julia, Java, Go, Numba and CUDA ports implement 2.0.0. They match this package exactly on maps without clipped peaks and without `--local-emitters`.
+| Metric | V2 | V3 2.1 | V3 2.2+ |
+|---|---|---|---|
+| splits per map (lower is better) | 2.08 | 0.33 | **0.17** |
+| precision | 0.73 | 0.914 | **0.924** |
+| recall | – | 0.852 | **0.886** |
+| ν class accuracy | 0.77 | 0.826 | **0.854** |
+| fit pass rate | – | 0.865 | **0.931** |
+| false-sideband rate (lower is better) | – | **0.29** | 0.33 |
 
-## Backward compatibility
+**Limits:**
+- **Dense clusters.** Emitters closer than their linewidth cannot be resolved at 150 g/mm. V3 reports fewer, broader components and leaves structured residuals, as in pillar 9's 700–730 nm band. V2 fits them better, but its extra lines are not physical emitters.
+- **The residual limit fails mainly on bright emitter spectra,** from line shape and dense clusters, not from missing emitters.
+- **The Lorentzian width is poorly constrained** below about half the instrument FWHM; the shortlist then recommends the finest grating.
+- **The replica diagnostic needs the parent emitter to be absent from part of the map;** otherwise it reports only a "possible replica".
 
-`analysis.py` keeps the V1 interface (`--input/--output/--device`) for the fixed 12-anchor legacy fit with CPU or GPU solvers.
+## Requirements and performance
 
-## Tests
+- **Python and libraries:** Python ≥ 3.10, NumPy ≥ 1.24, SciPy ≥ 1.10, Matplotlib ≥ 3.7.
+- **C++:** g++ or clang++ with OpenMP, on Linux with glibc (the vectorised `exp` comes from libmvec). Solvers are compiled on first use into the package's `native/`, or into `$FASTDECOV_BUILD_DIR` or `~/.cache/fastdecov` when that is read-only.
+- **Optional GPU:** a CUDA path for the legacy method (`pip install .[gpu]`, see `analysis.py`).
 
-```bash
-pip install .[test] && pytest -q tests
-```
+**Timing** on a 20-core desktop with 12 threads, including all reports and diagnostics, without figures:
+
+| Map | Spectra | Time |
+|---|---|---|
+| tent map | 121 | 8 s |
+| pillar-9 crop | 315 | 16 s |
+| full pillar-9 map | 900 | 32 s |
+
+V3 discovery and fitting alone take about 2–10 s. The original MATLAB code under Octave needs about 325 s for the 315-spectrum crop with fixed peaks, and fits it much worse.
+
+**Other languages.** The algorithm was also ported to C++, Rust, Fortran, Julia, Java, Go, Numba and CUDA. The ports give byte-identical results to each other and to **version 2.0.0** of this package; Go was the fastest. They do not include the 2.1+ changes:
+- clipped-peak masking;
+- the 2.2 resolvability rule and background floor;
+- the diagnostics, line-shape report and shortlist.
+
+To reproduce 2.0.0 V3 results with this package, use `pair_rule="mean"`, `bg_floor_sigma=None`, and maps without clipped peaks. The ports and their benchmark are kept in the development repository; the benchmark outputs are in `results/`.
+
+## Version history
+
+| Version | Changes |
+|---|---|
+| **2.4.0** | Voigt line-shape report (Lorentzian width, extra Gaussian, ν_intrinsic); follow-up shortlist (`shortlist.md`); `g2_order`; `follow_up_gratings_meV` |
+| **2.3.0** | Residual-feature diagnostic: optical-phonon replica vs separate emitter, tested against the map; `optical_phonon_max_meV`; `replica of #N` labels |
+| **2.2.0** | Narrow lines on broad (band-edge) components; background floor ≥ −3σ; `broad` label |
+| **2.1.0** | `--grid auto`; residual limit max(100, 3√y); substrate / weak / emitter classes and `snr_map.png`; clipped-peak masking; implied Huang–Rhys S; `--local-emitters` (experimental) |
+| **2.0.0** | CLI and SDK; V3 physical emitters (ZPL + tied phonon sideband); V2 and legacy methods |
+
+## Repository contents
+
+| Path | Content |
+|---|---|
+| `fastdecov/` | The package. Main modules: `basis3.py` (V3 discovery), `lineshape.py`, `replicas.py`, `shortlist.py`, `grid.py`, `report.py`, and `native/` (C++ solvers). |
+| `analysis.py` | V1 interface (`--input/--output/--device`) for the fixed 12-anchor legacy fit, CPU or GPU |
+| `examples/` | `fit_maps.sh` (the two reference maps) and `sdk_example.py` (ranking and shortlist) |
+| `tests/` | `pip install .[test] && pytest -q tests` (29 tests) |
+| `manuscript/` | Methodology manuscript (`.md`/`.docx`/`.pdf`), figures, and the scripts that generate every number from verified metrics |
+| `results/` | Benchmark outputs of the three fastest ports (Go, Fortran, C++), the Python + C++ reference and the Octave/MATLAB baseline on Pillar 1 and Pillar 2. Includes `dc` tables, `.tif` figures (Git LFS: `git lfs pull`) and parity reports; see `results/README.md`. |
 
 ## License
 
 MIT; see `LICENSE`.
-
-## Manuscript and benchmark results
-
-- `manuscript/`: the methodology manuscript (`.md`/`.docx`/`.pdf`), figures and the scripts that generate every number from verified metrics.
-- `results/`: outputs of the three fastest implementations (Go, Fortran, C++), the Python + C++ reference and the Octave/MATLAB baseline on Pillar 1 and Pillar 2: `dc` tables, `.tif` figures (Git LFS; run `git lfs pull`), emitter tables and parity reports. See `results/README.md` for the V3 metrics.
