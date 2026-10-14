@@ -76,10 +76,10 @@ class Result:
         return emitter.evaluate(self.params[s], self.xs[s], self.psb, parts=parts)
 
 
-def fit_map(m, method="v3", phys=None, threads=None, verbose=False, local=False, grid="auto", **opts):
+def fit_map(m, method="v3", phys=None, threads=None, verbose=False, local=True, grid="auto", **opts):
     """Discover the emitters/basis of a map and fit every spectrum. `phys`: dict or path of a physics JSON.
-    v3 only, experimental: local=True adds emitters confined to a small connected patch of the map
-    (basis3.local_emitters); `grid`
+    v3 only: local=True (default since 2.5) adds emitters confined to a small connected patch of the map
+    (basis3.local_emitters), e.g. sharp lines on band-edge emission that map-wide discovery dilutes; `grid`
     ("auto", None, (rows, cols[, serpentine]) or a detect_grid dict) defines which spectra are neighbours."""
     if method not in METHODS:
         raise ValueError(f"method must be one of {METHODS}")

@@ -95,7 +95,19 @@ def ranking(res, phys):
     return rows
 
 
-def per_spectrum(res, limit=None, snr_classes=None):
+def unexplained_peaks(res, phys=None):
+    """Fit audit, per spectrum: resolved peaks of the data (prominence >= 5 x noise) that the fit leaves unexplained (fit
+    >= 3 x noise too low there and no fitted component centred within half an instrument FWHM). Returns, per spectrum,
+    a list of (centre_nm, height above the fit)."""
+    from . import basis3
+    phys = phys or physics.load()
+    inst = lambda c: physics.instrument_fwhm_nm(c, phys)
+    return [[(round(c, 2), round(h, 1)) for c, h, _ in basis3._data_peaks(np.asarray(res.xs[s]), np.asarray(res.ys[s]), res.keeps[s],
+                                                                       res.params[s], res.psb, res.sigma[s], inst, basis3.LOCAL)]
+            for s in range(len(res.ids))]
+
+
+def per_spectrum(res, limit=None, snr_classes=None, phys=None):
     """Per-spectrum checks shared by quality() and save(), computed once: residual limit (max |r|, ratio, pass), peak
     SNR, peak height, spectrum class and clipped-pixel count."""
     limit = tuple(limit or (RESIDUAL_LIMIT["floor"], RESIDUAL_LIMIT["k_sqrt"]))
@@ -104,10 +116,22 @@ def per_spectrum(res, limit=None, snr_classes=None):
     psnr, height = peak_snr(res)
     clipped = np.array([0 if res.method == "legacy" else int((~B.clip_keep(y)).sum()) for y in res.ys])
     return dict(limit=limit, bounds=bounds, mx=mx, ratio=ratio, rok=rok, psnr=psnr, height=height,
-                cls=classify(psnr, bounds), clipped=clipped)
+                cls=classify(psnr, bounds), clipped=clipped, unexplained=unexplained_peaks(res, phys))
 
 
-def quality(res, limit=None, snr_classes=None, ps=None):
+def _audit(res, ps):
+    un = ps["unexplained"]
+    pos = [c for u in un for c, _ in u]
+    h, e = np.histogram(pos, bins=np.arange(np.floor(min(pos) / 10) * 10, np.ceil(max(pos) / 10) * 10 + 10, 10)) if pos else ([], [])
+    worst = sorted(((h_, res.ids[s], c) for s, u in enumerate(un) for c, h_ in u), reverse=True)[:12]
+    return dict(rule="resolved data peak (prominence >= 5 noise) left unexplained by the fit (fit >= 3 noise too low, no component "
+                     "centred within half an instrument FWHM); noise = sqrt(sigma^2 + y)",
+                n_spectra=int(sum(1 for u in un if u)), n_total=len(un),
+                bands=[dict(from_nm=float(e[i]), to_nm=float(e[i + 1]), spectra=int(h[i])) for i in np.argsort(-np.asarray(h))[:6] if h[i]],
+                worst=[dict(spectrum_id=sid, center_nm=c, height=hh) for hh, sid, c in worst])
+
+
+def quality(res, limit=None, snr_classes=None, ps=None, phys=None):
     """Residual pass rate (RMS <= max(2.5 % peak, 2 sigma), max <= max(12 % peak, 8 sigma)), reduced chi^2, and the
     per-pixel residual limit check (see residual_check); limit = (floor, k_sqrt), default RESIDUAL_LIMIT.
     ps: per_spectrum() results, if already computed."""
@@ -119,7 +143,7 @@ def quality(res, limit=None, snr_classes=None, ps=None):
         ok.append(bool(np.sqrt(np.mean(r ** 2)) <= max(PASS["rms_peak"] * pk, PASS["rms_sigma"] * sg) and
                        np.abs(r).max() <= max(PASS["max_peak"] * pk, PASS["max_sigma"] * sg)))
         rch.append(float(r @ r / max(n - res.params.shape[1], 1) / sg ** 2))
-    ps = ps or per_spectrum(res, limit, snr_classes)
+    ps = ps or per_spectrum(res, limit, snr_classes, phys)
     (floor, k_sqrt), bounds = ps["limit"], ps["bounds"]
     mx, ratio, rok, cls = ps["mx"], ps["ratio"], ps["rok"], ps["cls"]; okv = np.array(ok)
     by_class = {}
@@ -136,8 +160,23 @@ def quality(res, limit=None, snr_classes=None, ps=None):
                                     worst=[dict(spectrum_id=res.ids[i], ratio=round(float(ratio[i]), 3),
                                                 max_abs_residual=round(float(mx[i]), 1)) for i in worst if not rok[i]]),
                 clipped_spectra=int(np.sum(ps["clipped"] > 0)),
+                audit=_audit(res, ps),
                 snr_classes=dict(bounds=list(bounds), rule="peak SNR < %g substrate, < %g weak, else emitter" % bounds,
                                  by_class=by_class))
+
+
+def audit_markdown(q):
+    a = q.get("audit")
+    if not a:
+        return ""
+    L = [f"\nFit audit: {a['n_spectra']} of {a['n_total']} spectra still show a resolved peak the fit does not explain "
+         f"({a['rule']})."]
+    if a["n_spectra"]:
+        L.append("Where: " + ", ".join(f"{b['from_nm']:.0f}-{b['to_nm']:.0f} nm ({b['spectra']})" for b in a["bands"]) + ".")
+        L.append("Inspect first: " + ", ".join(f"{w['spectrum_id']} at {w['center_nm']} nm (+{w['height']:.0f})" for w in a["worst"]) + ".")
+        L.append("Per spectrum: column unexplained_peaks_nm of spectra.tsv. These fits are least reliable; at 150 g/mm they are "
+                 "typically crowded lines or sharp lines on band-edge emission.")
+    return "\n".join(L) + "\n"
 
 
 def residual_markdown(q, method):
@@ -180,8 +219,10 @@ def ranking_markdown(name, res, rows, phys):
     return "\n".join(L) + "\n"
 
 
-def figure(path, sid, x, y, keep, p, psb, formats=("tif",), limit=None):
-    """Fit figure: data, fit, background, each ZPL (solid) and phonon sideband (dashed); residuals at kept pixels."""
+def figure(path, sid, x, y, keep, p, psb, formats=("tif",), limit=None, kinds=None, min_share=0.01):
+    """Fit figure: data, fit, background, and the components present in this spectrum (>= min_share of its line area):
+    each ZPL (solid, labelled #k, fitted centre and kind) and its phonon sideband (dashed); residuals at kept pixels.
+    Components of the map basis with (near) zero amplitude here are not drawn."""
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
@@ -189,10 +230,13 @@ def figure(path, sid, x, y, keep, p, psb, formats=("tif",), limit=None):
     fig, ax = plt.subplots(1, 2, figsize=(13, 5))
     ax[0].plot(x, y, color="#0072bd", lw=1, label="data"); ax[0].plot(x, tot, color="#d95319", lw=1.2, label="fit")
     ax[0].plot(x, bg, color="#edb120", lw=1, label="background")
-    for k in range(len(psb)):
-        line, = ax[0].plot(x, bg + zpl[k], lw=0.9, label=f"ZPL {k + 1}")
-        if psb[k]:
-            ax[0].plot(x, bg + sb[k], lw=0.9, ls="--", color=line.get_color())
+    tab = emitter.table(p, psb); area = tab[:, 3] + tab[:, 4]
+    present = area >= min_share * max(float(area.sum()), 1e-300)
+    for k in np.flatnonzero(present):
+        kind = f", {kinds[k]}" if kinds else ""
+        line, = ax[0].plot(x, bg + zpl[k], lw=0.9, label=f"#{k + 1} {tab[k, 0]:.1f} nm{kind}")
+        if psb[k] and tab[k, 4] > 0:
+            ax[0].plot(x, bg + sb[k], lw=0.9, ls="--", color=line.get_color(), label=f"#{k + 1} sideband")
     ax[0].set_xlim(x[0], x[-1]); ax[0].set_xlabel("Wavelength (nm)"); ax[0].set_ylabel("Intensity")
     ax[0].set_title(f"{sid}.txt  (dashed: phonon sidebands)")
     if (~keep).any():
@@ -213,9 +257,9 @@ def figure(path, sid, x, y, keep, p, psb, formats=("tif",), limit=None):
 
 
 def _figure_task(args):
-    out, items, formats, limit = args
+    out, items, formats, limit, kinds = args
     for sid, x, y, k, p, psb in items:
-        figure(Path(out) / f"dc_{sid}", sid, x, y, k, p, psb, formats, limit)
+        figure(Path(out) / f"dc_{sid}", sid, x, y, k, p, psb, formats, limit, kinds)
     return len(items)
 
 
@@ -281,7 +325,7 @@ def save(res, out, name=None, phys=None, figures=False, formats=("tif",), grid=N
         grid = G.fixed(*grid)
     if isinstance(grid, dict) and not grid.get("rows"):
         grid = None
-    ps = per_spectrum(res, limit, snr_classes)
+    ps = per_spectrum(res, limit, snr_classes, phys)       # the run's physics (instrument width) for the fit audit
     bounds = ps["bounds"]
     mx, ratio, rok, psnr, height, cls = ps["mx"], ps["ratio"], ps["rok"], ps["psnr"], ps["height"], ps["cls"]
     out = Path(out); (out / "dc").mkdir(parents=True, exist_ok=True)
@@ -299,11 +343,12 @@ def save(res, out, name=None, phys=None, figures=False, formats=("tif",), grid=N
                          + ("" if hr is None else f"{hr:.4g}") + "\n")
     with open(out / "spectra.tsv", "w") as fh:
         fh.write("spectrum_id\tsse\tbackground_700nm\tbackground_slope_per_nm\tmasked_pixels\tclipped_pixels\t"
-                 "max_abs_residual\tresidual_limit_ratio\tresidual_ok\tpeak_counts\tpeak_snr\tspectrum_class\n")
+                 "max_abs_residual\tresidual_limit_ratio\tresidual_ok\tpeak_counts\tpeak_snr\tspectrum_class\tunexplained_peaks_nm\n")
         for s, sid in enumerate(res.ids):
             fh.write(f"{sid}\t{res.sse[s]:.10g}\t{res.params[s, 0]:.10g}\t{res.params[s, 1] / 100.0:.10g}\t"
                      f"{int((~res.keeps[s]).sum())}\t{ps['clipped'][s]}\t"
-                     f"{mx[s]:.6g}\t{ratio[s]:.4f}\t{int(rok[s])}\t{height[s]:.6g}\t{psnr[s]:.4g}\t{CLASS_NAMES[cls[s]]}\n")
+                     f"{mx[s]:.6g}\t{ratio[s]:.4f}\t{int(rok[s])}\t{height[s]:.6g}\t{psnr[s]:.4g}\t{CLASS_NAMES[cls[s]]}\t"
+                     + " ".join(f"{c:.2f}" for c, _ in ps["unexplained"][s]) + "\n")
     (out / "basis.json").write_text(json.dumps(dict(method=res.method, K=res.K, psb=[int(v) for v in res.psb],
                                                     centers=[round(res.median(0, k), 4) for k in range(res.K)],
                                                     **res.extra), indent=1, default=float) + "\n")
@@ -331,7 +376,7 @@ def save(res, out, name=None, phys=None, figures=False, formats=("tif",), grid=N
                                                              fit_quality=q, emitters=rows), indent=1, default=float) + "\n")
     (out / "emitter_report.md").write_text(ranking_markdown(name, res, rows, phys) +
                                            f"\nFit quality: pass rate {q['pass_rate']:.2f}, reduced chi^2 median {q['rchi2_median']:.2f}.\n"
-                                           + residual_markdown(q, res.method)
+                                           + residual_markdown(q, res.method) + audit_markdown(q)
                                            + LS.markdown(shapes, rows)
                                            + (RP.markdown(feats) if feats is not None else ""))
     sl = SL.build(res, rows, feats, phys, grid)
@@ -343,12 +388,13 @@ def save(res, out, name=None, phys=None, figures=False, formats=("tif",), grid=N
             feature_maps(out / "residual_features.png", res, feats, grid)
     if figures:
         items = [(sid, res.xs[s], res.ys[s], res.keeps[s], res.params[s], list(res.psb)) for s, sid in enumerate(res.ids)]
+        kinds = [r["kind"] for r in rows]
         if threads > 1:
             import multiprocessing
             from concurrent.futures import ProcessPoolExecutor
             chunks = [items[i::threads] for i in range(threads) if items[i::threads]]
             with ProcessPoolExecutor(len(chunks), mp_context=multiprocessing.get_context("spawn")) as ex:
-                list(ex.map(_figure_task, [(str(out / "dc"), c, formats, limit) for c in chunks]))
+                list(ex.map(_figure_task, [(str(out / "dc"), c, formats, limit, kinds) for c in chunks]))
         else:
-            _figure_task((str(out / "dc"), items, formats, limit))
+            _figure_task((str(out / "dc"), items, formats, limit, kinds))
     return dict(ranking=rows, quality=q, shortlist=sl)

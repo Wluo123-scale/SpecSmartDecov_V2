@@ -214,3 +214,65 @@ def test_shortlist_written_and_excludes_broad_and_replicas(tmp_path):
             assert rows[it["emitter"]]["kind"] == "emitter line"
     assert [it["rank"] for it in sl] == list(range(1, len(sl) + 1))
     assert (out / "shortlist.md").is_file()
+
+
+def _bandedge_map(seed=11):
+    """15 x 15 map: band-edge emission at 610 nm with a broad red shoulder everywhere (V3 gives it a wide sideband), a
+    map-wide emitter at 715 nm, and a sharp line at 628.5 nm in a 2 x 2 patch only (1.8 % of the map, below min_prev)."""
+    from fastdecov import api, emitter
+    rng = np.random.default_rng(seed); x = np.linspace(580, 760, 420); ys, ids = [], []
+    for i in range(225):
+        r, c = divmod(i, 15)
+        y = emitter.evaluate(np.array([5.0, 0.0, 300 * (0.6 + 0.4 * rng.random()), 610.0, 0.6, 11.0, 0.45, 2.0, 6.0]), x, [1])
+        y = y + emitter.evaluate(np.array([0.0, 0.0, 2500.0 * (0.7 + 0.3 * rng.random()), 715.0 + 0.1 * r, 0.3, 4.0]), x, [0])
+        if 7 <= r <= 8 and 7 <= c <= 8:
+            y = y + emitter.evaluate(np.array([0.0, 0.0, 900.0, 628.5, 0.3, 2.8]), x, [0])
+        ys.append(y + rng.normal(0, 4, x.size)); ids.append(f"{i + 1:04d}")
+    return api.SpectrumMap(ids, [x] * 225, ys)
+
+
+def test_localized_line_on_band_edge_not_shielded_by_its_sideband():
+    """2.5: a sharp line on band-edge emission, present in 1.8 % of the map, is found by the (default) local pass even
+    under the band-edge component's fitted sideband; map-wide discovery alone (local=False) misses it."""
+    from fastdecov import api
+    m = _bandedge_map()
+    near = lambda res: [res.median(0, k) for k in range(res.K) if abs(res.median(0, k) - 628.5) < 1.0]
+    assert near(api.fit_map(m, "v3", threads=2, grid=(15, 15))), "2.5 should find the localized 628.5 nm line"
+    assert not near(api.fit_map(m, "v3", threads=2, grid=(15, 15), local=False))
+
+
+def test_cosmic_keep_masks_isolated_spikes_only():
+    """2.5 rule: a short hot run is a cosmic ray only if its neighbours stay near the local baseline. The top of a real,
+    instrument-broadened line (even one sampled by only 2-3 px) is kept; isolated 1-2 px spikes are masked, also at the
+    first and last pixel; shoulder=None restores the 2.0-2.4 rule, which clips the sharp line's top."""
+    from fastdecov import basis as B
+    rng = np.random.default_rng(2)
+    x = np.arange(400, dtype=float)
+    base = 10 + rng.normal(0, 2, x.size)
+    sharp = 2000 * np.exp(-4 * np.log(2) * ((x - 120.5) / 2.2) ** 2)        # sharp real line: FWHM 2.2 px, top on 2 px
+    y = base + sharp
+    y[250] += 3000                                  # 1-px cosmic ray
+    y[300:302] += np.array([2500.0, 1800.0])        # 2-px cosmic ray
+    y[0] += 2500                                    # cosmic ray on the first pixel
+    y[-1] += 2500                                   # ... and on the last pixel
+    sigma = B.noise_sigma(y)
+    keep = B.cosmic_keep(y, sigma)
+    assert keep[117:125].all(), "the top of a sharp real line must not be masked"
+    assert not keep[250] and not keep[300] and not keep[301], "isolated spikes are cosmic rays"
+    assert not keep[0] and not keep[-1], "spikes at the map edges are masked"
+    assert keep.sum() == x.size - 5
+    assert not B.cosmic_keep(y, sigma, shoulder=None)[120:122].any(), "the 2.0-2.4 rule clipped the line top"
+
+
+def test_audit_uses_the_runs_physics(tmp_path):
+    """The fit audit uses the physics of the run (instrument width), not the default file."""
+    from fastdecov import api, physics, report
+    m = api.load_map(make_map(tmp_path))
+    res = api.fit_map(m, "v3", threads=2, grid=(4, 6))
+    phys = dict(physics.load(), instrument_resolution_meV=40.0)     # very coarse instrument: half-FWHM tolerance ~8 nm
+    ps_default = report.per_spectrum(res)
+    ps_custom = report.per_spectrum(res, phys=phys)
+    # with the custom (coarse) instrument, peaks must be wider to count, so the audit can only find fewer of them
+    assert sum(map(len, ps_custom["unexplained"])) <= sum(map(len, ps_default["unexplained"]))
+    q = report.quality(res, ps=ps_custom)
+    assert q["audit"]["n_spectra"] == sum(1 for u in ps_custom["unexplained"] if u)

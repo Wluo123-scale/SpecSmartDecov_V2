@@ -1,7 +1,7 @@
 """Command-line interface: `fastdecov <command> ...` (also `python -m fastdecov`).
 
   fastdecov fit INPUT_DIR OUTPUT_DIR [--method v3|v2|legacy] [--grid auto|none|ROWSxCOLS[s]] [--physics FILE]
-                [--residual-limit FLOOR,K] [--snr-classes LOW,HIGH] [--no-residual-features] [--local-emitters] [--threads N] [--figures] [--png] [--name NAME] [--verbose]
+                [--residual-limit FLOOR,K] [--snr-classes LOW,HIGH] [--no-residual-features] [--no-local-emitters] [--threads N] [--figures] [--png] [--name NAME] [--verbose]
   fastdecov report OUTPUT_DIR                print the emitter report of a finished run
   fastdecov physics [--template FILE]        show the default physics parameters, or write an editable copy
   fastdecov info                             version, compiler and solver status
@@ -125,8 +125,9 @@ def main(argv=None):
                    help="peak-SNR bounds of the substrate / weak / emitter spectrum classes used in the report (default 20,300)")
     f.add_argument("--no-residual-features", action="store_true",
                    help="skip the residual-feature diagnostic (phonon replica vs separate emitter, residual_features.json)")
-    f.add_argument("--local-emitters", action="store_true",
-                   help="v3, experimental: also add emitters that exist only in a small connected patch of the map")
+    f.add_argument("--no-local-emitters", dest="local_emitters", action="store_false",
+                   help="v3: skip the local pass that adds emitters confined to a small connected patch of the map (on by default)")
+    f.add_argument("--local-emitters", dest="local_emitters", action="store_true", help=argparse.SUPPRESS)   # 2.1-2.4 spelling
     f.add_argument("--residual-limit", type=_limit, default=(100.0, 3.0), metavar="FLOOR,K",
                    help="per-pixel residual check |r| <= max(FLOOR, K*sqrt(y)), reported per spectrum (default 100,3)")
     f.add_argument("--physics", default=None, help="physics JSON (instrument resolution, strain range); "

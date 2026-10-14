@@ -25,7 +25,15 @@ OPTS3 = dict(resolve=0.85, min_prev=0.03, min_share=0.02, accept_bic=10.0, spec_
              init_support=0.01, new_tol=physics.load()["strain_shift_halfrange_nm"], new_width_max=60.0, psb_r=(0.0, 1.0), psb_dd=(0.0, 6.0), psb_dw=(0.0, 15.0),
              starts=(8.0, 3.0), final_starts=("mid", 5.0, 2.0), psb_first=True,
              width_mode="fit", distinct_r=None, dip_test=False, dip_sigma=3.0, dip_rel=0.02, dip_prev=0.03,
-             pair_rule="narrow", width_ratio=2.0, mimic_r=0.8, bg_floor_sigma=3.0)
+             pair_rule="narrow", width_ratio=2.0, mimic_r=0.8, bg_floor_sigma=3.0, psb_width_gate=False, support_tries=0,
+             local_psb_shield=True, no_psb_on_broad=False, broad_x_instrument=5.0)
+# 2.5: local_psb_shield - in the local pass a peak much narrower than a fitted sideband (< 0.7 x its width) is a separate
+# line, not that sideband's shape residual (a sideband is at least as broad as its ZPL). no_psb_on_broad - a broad
+# component (FWHM > broad_x_instrument x instrument, e.g. band-edge emission) gets no tied sideband. Experimental, off:
+# psb_width_gate (growth: a candidate narrower than an emitter is not tried as its sideband) and support_tries (when
+# no candidate of the map-averaged residual profile is accepted, also try up to this many wavelengths where >= min_prev of
+# the spectra exceed the residual limit max(100, 3 sqrt(y)) before growth stops: localized lines (a few % of the map)
+# are diluted in the average. 0 / False restore 2.4.
 # 2.2: pair_rule "narrow" - a narrow line next to a much broader one (width ratio >= width_ratio, e.g. GaSe band-edge
 # emission) is resolved if it is >= resolve x ITS OWN FWHM from the broad centre and the broad component's spatial map
 # does not just track it (share-map correlation < mimic_r; a pedestal that tracks a narrow line is how splitting fakes
@@ -84,9 +92,18 @@ def setup(x, y, b, ws, o, allowed=None):
     p0 = np.empty(npar); lb = np.empty(npar); ub = np.empty(npar)
     p0[:2] = b0, b1; lb[:2] = -yr, -2 * yr; ub[:2] = float(y.max()), 2 * yr
     a0 = np.interp(b.centers, x, y - (b0 + b1 * t))
+    c0 = b.centers.copy()
+    if ws == "peaks":          # data-guided start (optional, not in final_starts: in clusters two lines start on one maximum
+        #                    and split one emitter): each line at the highest (3-px smoothed) data point of its window
+        ysm = np.convolve(y - (b0 + b1 * t), np.ones(3) / 3, mode="same")
+        for k in range(b.K):
+            m = (x >= b.lo[k]) & (x <= b.hi[k])
+            if m.any():
+                i = np.flatnonzero(m)[np.argmax(ysm[m])]; c0[k] = x[i]; a0[k] = ysm[i]
     for k in range(b.K):
         q = off[k]
-        p0[q:q + 4] = max(a0[k], 0.0), b.centers[k], 0.5, (0.5 * (b.wmin[k] + b.wmax[k]) if ws == "mid" else min(ws, b.wmax[k]))
+        wstart = 0.5 * (b.wmin[k] + b.wmax[k]) if ws == "mid" else (min(3.0, b.wmax[k]) if ws == "peaks" else min(ws, b.wmax[k]))
+        p0[q:q + 4] = max(a0[k], 0.0), c0[k], 0.5, max(wstart, b.wmin[k])
         lb[q:q + 4] = 0.0, b.lo[k], 0.0, b.wmin[k]
         ub[q:q + 4] = max(2 * yr, 1.0), b.hi[k], 1.0, b.wmax[k]
         if allowed is not None and not allowed[k]:          # local emitter outside its patch: amplitude pinned near 0
@@ -304,8 +321,26 @@ def grow(xs, ys, opts=None, workers=None, verbose=False):
             acc += np.interp(x0, xA[s], z); cnt += np.interp(x0, xA[s], kA[s].astype(float))
         prof = np.convolve(acc / np.maximum(cnt, 1.0), np.ones(3) / 3, mode="same")
         order = [i for i in np.argsort(-prof, kind="stable") if 0 < i < x0.size - 1 and prof[i] >= prof[i - 1] and prof[i] >= prof[i + 1]]
+        tried = order[:o["tries"]]
+        if o.get("support_tries"):
+            # support profile: fraction of spectra whose (3-px smoothed) residual exceeds the residual limit
+            sup = np.zeros(x0.size)
+            for s in range(len(xA)):
+                r = np.where(kA[s], yA[s] - emitter.evaluate(fA.params[s], xA[s], b.psb), 0.0)
+                r = np.convolve(r, np.ones(3) / 3, mode="same")
+                lim = np.maximum(100.0, 3.0 * np.sqrt(np.maximum(yA[s], 0.0)))
+                sup += np.interp(x0, xA[s], (r > lim).astype(float))
+            sup = np.convolve(sup / max(len(xA), 1), np.ones(3) / 3, mode="same")
+            near = lambda i: any(abs(x0[i] - x0[t]) < 1.0 for t in tried)
+            extra = [i for i in np.argsort(-sup, kind="stable") if 0 < i < x0.size - 1 and sup[i] >= o["min_prev"]
+                     and sup[i] >= sup[i - 1] and sup[i] >= sup[i + 1]]
+            for i in extra:
+                if len(tried) >= o["tries"] + o["support_tries"]:
+                    break
+                if not near(i):
+                    tried.append(i)
         accepted = False
-        for i in order[:o["tries"]]:
+        for i in tried:
             c = float(x0[i])
             cen = np.array([fA.med(0, j) for j in range(b.K)]); wid = np.array([fA.med(2, j) for j in range(b.K)])
             j = int(np.argmin(np.abs(cen - c))) if b.K else -1
@@ -313,6 +348,10 @@ def grow(xs, ys, opts=None, workers=None, verbose=False):
             if o["psb_first"] and b.K:
                 # red-side peak within sideband reach of an emitter without one: try the sideband first
                 red = [k for k in range(b.K) if not b.psb[k] and 0 < c - cen[k] <= 0.5 * wid[k] + o["psb_dd"][1] + 0.5 * wid[k]]
+                if o.get("psb_width_gate"):          # a sideband is at least as broad as its ZPL: a narrower candidate is not one
+                    red = [k for k in red if wfun(c, wmin) >= wid[k]]
+                if o.get("no_psb_on_broad"):         # band-edge / broad components carry no tied sideband
+                    red = [k for k in red if wid[k] <= o["broad_x_instrument"] * physics.instrument_fwhm_nm(cen[k])]
                 if red:
                     moves.append(("psb", b.with_psb(min(red, key=lambda k: c - cen[k]))))
             wj = min(wid[j], WF(cen[j], wid[j]), WF(c, wid[j])) if (b.K and WF) else (wid[j] if b.K else 0.0)
@@ -323,7 +362,8 @@ def grow(xs, ys, opts=None, workers=None, verbose=False):
             if b.K == 0 or abs(c - cen[j]) >= o["resolve"] * wj:
                 moves.append(("add", b.with_emitter(c, o["new_tol"], wmin, o["new_width_max"])))
             else:
-                if c > cen[j] and not b.psb[j] and not moves:
+                if c > cen[j] and not b.psb[j] and not moves and not (o.get("psb_width_gate") and wfun(c, wmin) < wid[j]) \
+                        and not (o.get("no_psb_on_broad") and wid[j] > o["broad_x_instrument"] * physics.instrument_fwhm_nm(cen[j])):
                     moves.append(("psb", b.with_psb(j)))
                 if DR is not None:          # unresolved: allowed only if its map is distinct (checked after the fit)
                     moves.append(("add", b.with_emitter(c, o["new_tol"], wmin, o["new_width_max"])))
@@ -394,8 +434,12 @@ def grow(xs, ys, opts=None, workers=None, verbose=False):
 
 
 # --------------------------------------------------------------------------- local emitters (2.1)
-LOCAL = dict(ratio=2.0, min_spectra=2, width_x_instrument=0.6, group_x_strain=0.5, mask_gap_px=2, accept_frac=0.5,
-             rounds=2, max_new=12)
+LOCAL = dict(ratio=2.0, noise_k=3.0, min_spectra=2, width_x_instrument=0.6, group_x_strain=0.5, mask_gap_px=2,
+             accept_frac=0.5, rounds=3, max_new=12, peak_prom=5.0, peak_resid=3.0, data_peaks=True, completion=True)
+# 2.5: candidates are judged on the 3-px smoothed residual against max(noise_k x sigma, 3 sqrt(y)) of that spectrum (the
+# report's 100-count floor would make weak spectra blind); a candidate inside an existing emitter line's strain window is
+# that emitter (only broad components leave room for narrow lines); near an existing local line but outside its patch it
+# extends that patch; every local line must remain necessary (removing it must worsen the per-spectrum BIC in its patch).
 
 
 def _neighbours(order, rows, cols):
@@ -430,9 +474,12 @@ def _residual_peaks(x, y, keep, p, psb, limit_fn, inst_fn, o, L):
     from scipy.signal import find_peaks, peak_widths
     tot = emitter.evaluate(p, x, psb)
     o_ = np.argsort(x); x, y, keep, tot = x[o_], y[o_], keep[o_], tot[o_]
-    r = np.where(keep, y - tot, 0.0); z = r / limit_fn(y)
+    r = np.where(keep, y - tot, 0.0)
+    r = np.convolve(r, np.ones(3) / 3, mode="same")
+    z = r / limit_fn(y)
     step = float(np.median(np.diff(x)))
-    pk, _ = find_peaks(z, height=L["ratio"])
+    pk, _ = find_peaks(r)                       # maxima of the residual itself (widths are measured on it) ...
+    pk = pk[z[pk] >= L["ratio"]]                # ... above the threshold there
     if pk.size == 0:
         return []
     w = peak_widths(r, pk, rel_height=0.5)[0] * step
@@ -450,100 +497,233 @@ def _residual_peaks(x, y, keep, p, psb, limit_fn, inst_fn, o, L):
             ck, sk = tab[k, 0], tab[k, 2]
             if tab[k, 3] <= 0:
                 continue
-            if abs(c - ck) < o["resolve"] * 0.5 * (sk + wi):
+            # same resolvability rule as map-wide discovery (2.2: a narrow line on a much broader component needs only
+            # 0.85 x its own FWHM); a local line is confined to its patch, so it cannot be a pedestal tracking the broad one
+            if pair_unresolved(abs(c - ck), sk, wi, lambda: 0.0, o):
                 clash = True; break
             if psb[k] and tab[k, 4] > 0:
                 pc, pw = ck + tab[k, 5], tab[k, 6]
-                if abs(c - pc) <= 0.5 * pw:
+                # inside a fitted sideband: only a peak of comparable width can be that sideband's shape residual; a much
+                # narrower peak is a separate line (a sideband is at least as broad as its ZPL)
+                if abs(c - pc) <= 0.5 * pw and not (o.get("local_psb_shield", o.get("psb_width_gate")) and wi < 0.7 * pw):
                     clash = True; break
         if not clash:
             out.append((c, float(r[i]), float(wi)))
     return out
 
 
+def _data_peaks(x, y, keep, p, psb, sigma, inst_fn, L):
+    """Unexplained resolved peaks: local maxima of the (3-px smoothed) data with prominence >= L['peak_prom'] x noise,
+    where the fit is too low (residual >= L['peak_resid'] x noise) AND no component present in the spectrum (>= 2 % of its
+    line area) is centred within half an instrument FWHM of it (else the peak is that component's own maximum).
+    noise = sqrt(sigma^2 + y) (read + shot). A resolved maximum in the data is a line; a smooth misfit on a flank is not.
+    Returns [(centre_nm, residual_height, fwhm_nm)]."""
+    from scipy.signal import find_peaks, peak_widths
+    o_ = np.argsort(x); x, y, keep = x[o_], y[o_], keep[o_]
+    tot = emitter.evaluate(p, x, psb)
+    ys = np.convolve(np.where(keep, y, np.interp(np.arange(y.size), np.flatnonzero(keep), y[keep]) if keep.any() else y),
+                     np.ones(3) / 3, mode="same")
+    noise = np.sqrt(sigma ** 2 + np.maximum(ys, 0.0)) / np.sqrt(3.0)
+    step = float(np.median(np.diff(x)))
+    pk, pr = find_peaks(ys, prominence=0.0)
+    if pk.size == 0:
+        return []
+    keep_pk = pr["prominences"] >= L["peak_prom"] * noise[pk]
+    pk = pk[keep_pk]
+    if pk.size == 0:
+        return []
+    w = peak_widths(ys, pk, rel_height=0.5)[0] * step
+    tab = emitter.table(p, psb); area = tab[:, 3] + tab[:, 4]
+    cen = tab[area >= 0.02 * max(float(area.sum()), 1e-300), 0]
+    out = []
+    for i, wi in zip(pk, w):
+        c = float(x[i]); half = 0.5 * inst_fn(c)
+        resid = float(ys[i] - tot[i])
+        centred = cen.size and np.min(np.abs(cen - c)) <= half
+        if resid >= L["peak_resid"] * noise[i] and not centred:
+            if wi >= L["width_x_instrument"] * inst_fn(c):
+                out.append((c, max(resid, 0.0), float(wi)))
+    return out
+
+
+def _bic(sse, n, p):
+    return n * np.log(np.maximum(sse, 1e-300) / n) + p * np.log(n)
+
+
 def local_emitters(xs, ys, keeps, b, final, o, phys, grid=None, workers=None, verbose=False):
     """Add emitters that exist only in a small, spatially connected patch of the map (V3's map-wide prevalence rule,
-    min_prev, cannot see them). Each candidate is a resolved residual peak (see _residual_peaks) found at the same
-    wavelength in >= L['min_spectra'] neighbouring spectra; its amplitude is allowed only in that patch and its
-    8-neighbourhood, so it cannot split a line elsewhere. It is kept if the per-spectrum BIC improves by spec_gain in
-    >= accept_frac of the patch and it stays resolved from the other emitters there."""
-    from .report import residual_limit
-    L = LOCAL; S = len(xs)
+    min_prev, cannot see them), using only the lines the data require:
+    1. candidates: resolved residual peaks (_residual_peaks; noise-aware threshold, see LOCAL) and unexplained resolved
+       peaks of the data (_data_peaks), not inside the strain window
+       of an existing emitter line (that would be the same emitter); a candidate near an existing local line but outside
+       its patch extends that patch instead;
+    2. new lines: candidates at the same wavelength in >= L['min_spectra'] neighbouring spectra form one emitter, allowed
+       only in its patches and their 8-neighbourhood; kept if the per-spectrum BIC improves by spec_gain in
+       >= accept_frac of the patch and it stays resolved;
+    3. necessity: at the end, a local line whose removal does not worsen the BIC by spec_gain in >= accept_frac of the
+       spectra where it carries >= 2 % of the line area is removed again."""
+    L = {**LOCAL, **(o.get("local_opts") or {})}; S = len(xs)
     xm = [x[k] for x, k in zip(xs, keeps)]; ym = [y[k] for y, k in zip(ys, keeps)]
+    sig = [B.noise_sigma(np.asarray(y)) for y in ys]
     idx_all = np.arange(S)
     nbr = _neighbours(grid["order"], grid["rows"], grid["cols"]) if grid and grid.get("rows") else None
     inst = lambda c: physics.instrument_fwhm_nm(c, phys)
-    added = []
+    wtol = o["new_tol"]                                  # an emitter's strain window (centre +- new_tol)
+    wmin = max(0.8, 1.5 * float(np.median(np.diff(xs[0]))))
+    broad = lambda k: final.med(2, k) > o.get("broad_x_instrument", 5.0) * inst(final.med(0, k))
+    added, extended, removed = [], [], []
+
+    def grow_mask(spectra, base=None):
+        a = np.zeros(S, bool) if base is None else base.copy()
+        a[list(spectra)] = True
+        if nbr is not None:
+            for s_ in spectra:
+                a[list(nbr[s_])] = True
+        return a
+
+    def refit_gain(trial, sub, core, nadd):
+        fT = fit_set([xm[i] for i in sub], [ym[i] for i in sub], trial, o["final_starts"], o, workers, idx=sub)
+        n = final.n[sub]
+        d = _bic(fT.sse, n, nadd) - _bic(final.sse[sub], n, 0)
+        return fT, float(np.mean(d[core] < -o["spec_gain"])) if core.any() else 0.0
+
     for rnd in range(L["rounds"]):
-        cands = []
+        cands, ext = [], {}
         for s in range(S):
-            for c, h, w in _residual_peaks(np.asarray(xs[s]), np.asarray(ys[s]), keeps[s], final.params[s], b.psb,
-                                           residual_limit, inst, o, L):
-                cands.append((c, s, h, w))
-        # a candidate within the strain tolerance of an existing local emitter is that emitter (already modelled there),
-        # not a new one
-        gtol = L["group_x_strain"] * phys["strain_shift_halfrange_nm"]
-        loc_c = [float(cc) for cc, a in zip(b.centers, b.allow) if a is not None]
-        cands = [t for t in cands if all(abs(t[0] - cc) > gtol for cc in loc_c)]
-        if not cands:
-            break
-        cands.sort()
-        groups, cur = [], [cands[0]]
-        for t in cands[1:]:
-            if t[0] - np.median([u[0] for u in cur]) <= gtol:
-                cur.append(t)
-            else:
-                groups.append(cur); cur = [t]
-        groups.append(cur)
-        patches = []
-        for g in groups:
-            by_s = {}
-            for c, s, h, w in g:
-                if s not in by_s or h > by_s[s][1]:
-                    by_s[s] = (c, h, w)
-            # all connected patches at this wavelength (each >= min_spectra) form ONE emitter allowed in their union
-            comp = sorted(s for cc in _components(list(by_s), nbr) if len(cc) >= L["min_spectra"] for s in cc)
-            if comp:
-                patches.append((sum(by_s[s][1] for s in comp), comp, float(np.median([by_s[s][0] for s in comp])),
-                                float(np.median([by_s[s][2] for s in comp]))))
-        patches.sort(key=lambda t: -t[0])
-        new_round = 0
-        for _, comp, c, w in patches[:L["max_new"]]:
-            allow = np.zeros(S, bool); allow[comp] = True
-            if nbr is not None:
-                for s in comp:
-                    allow[list(nbr[s])] = True
-            tol = max(gtol, 1.0)
-            wmin = max(0.8, 1.5 * float(np.median(np.diff(xs[0]))))
-            trial = b.with_emitter(c, tol, wmin, max(3 * w, 2 * inst(c)), allow=allow)
-            sub = np.flatnonzero(allow)
-            fT = fit_set([xm[i] for i in sub], [ym[i] for i in sub], trial, o["final_starts"], o, workers, idx=sub)
-            old_sse = final.sse[sub]; n = final.n[sub]
-            d = (n * np.log(np.maximum(fT.sse, 1e-300) / n) + 4 * np.log(n)) - n * np.log(np.maximum(old_sse, 1e-300) / n)
-            jn = int(np.argmin(np.abs(trial.centers - c)))
-            core = np.isin(sub, comp)
-            gain = float(np.mean(d[core] < -o["spec_gain"]))
-            ok_res = True
-            for q, s in enumerate(sub):
-                if not core[q]:
-                    continue
-                tj = fT.tab[q, jn]
-                for k in range(trial.K):
-                    if k == jn or fT.tab[q, k, 3] <= 0.02 * max(fT.tab[q, :, 3].sum(), 1e-300):
-                        continue
-                    if abs(fT.tab[q, k, 0] - tj[0]) < o["resolve"] * 0.5 * (fT.tab[q, k, 2] + tj[2]):
-                        ok_res = False
-            dup = any(a is not None and abs(cc - c) <= gtol for cc, a in zip(b.centers, b.allow))
-            accept = gain >= L["accept_frac"] and ok_res and not dup   # dup: an earlier patch already added this emitter
+            lim = (lambda yy, sg=sig[s]: np.maximum(L["noise_k"] * sg, 3.0 * np.sqrt(np.maximum(yy, 0.0))))
+            found = _residual_peaks(np.asarray(xs[s]), np.asarray(ys[s]), keeps[s], final.params[s], b.psb, lim, inst, o, L)
+            for c, h, w in (_data_peaks(np.asarray(xs[s]), np.asarray(ys[s]), keeps[s], final.params[s], b.psb, sig[s], inst, L)
+                            if L["data_peaks"] else []):
+                if all(abs(c - c2) > 0.5 * inst(c) for c2, _, _ in found):
+                    found.append((c, h, w))
+            for c, h, w in found:
+                near = [k for k in range(b.K) if (b.allow[k] is not None or not broad(k)) and abs(c - final.med(0, k)) <= wtol]
+                if not near:
+                    cands.append((c, s, h, w)); continue
+                k = min(near, key=lambda k: abs(c - final.med(0, k)))
+                if b.allow[k] is not None and not b.allow[k][s]:
+                    ext.setdefault(k, set()).add(s)       # same local emitter, outside its patch: extend it
+        # extend existing local lines to new spectra
+        changed = 0
+        for k, sp in sorted(ext.items()):
+            sp = sorted(sp)
+            new_allow = grow_mask(sp, b.allow[k]); sub = np.flatnonzero(new_allow & ~b.allow[k])
+            trial = b.copy(); trial.allow[k] = new_allow
+            fT, gain = refit_gain(trial, sub, np.isin(sub, sp), 4)
+            ok = gain >= L["accept_frac"]
             if verbose:
-                print(f"  local {c:.1f} nm, {len(comp)} spectra: BIC gain in {gain:.0%}, resolved {ok_res}"
-                      f"{', duplicate' if dup else ''} -> {'add' if accept else 'reject'}", flush=True)
-            if accept:
-                b = trial
-                final = fit_set(xm, ym, b, o["final_starts"], o, workers, idx=idx_all)
-                added.append(dict(center=round(c, 2), spectra=len(comp), patch=int(allow.sum()), bic_gain_fraction=round(gain, 3),
-                                  round=rnd + 1))
-                new_round += 1
-        if not new_round:
+                print(f"  extend local {b.centers[k]:.1f} nm to {len(sp)} spectra: BIC gain in {gain:.0%} -> {'yes' if ok else 'no'}", flush=True)
+            if ok:
+                b = trial; final = fit_set(xm, ym, b, o["final_starts"], o, workers, idx=idx_all); changed += 1
+                extended.append(dict(center=round(float(b.centers[k]), 2), spectra=len(sp), round=rnd + 1))
+        if cands:
+            cands.sort()
+            groups, cur = [], [cands[0]]
+            for t in cands[1:]:
+                if t[0] - np.median([u[0] for u in cur]) <= wtol:     # one emitter may move by its strain window
+                    cur.append(t)
+                else:
+                    groups.append(cur); cur = [t]
+            groups.append(cur)
+            patches = []
+            for g in groups:
+                by_s = {}
+                for c, s, h, w in g:
+                    if s not in by_s or h > by_s[s][1]:
+                        by_s[s] = (c, h, w)
+                # each connected patch is its own candidate: rejecting one never blocks another
+                for comp in _components(list(by_s), nbr):
+                    if len(comp) >= L["min_spectra"]:
+                        patches.append((sum(by_s[s][1] for s in comp), sorted(comp), float(np.median([by_s[s][0] for s in comp])),
+                                        float(np.median([by_s[s][2] for s in comp]))))
+            patches.sort(key=lambda t: -t[0])
+            for _, comp, c, w in patches[:L["max_new"] * 3]:
+                same = [k for k in range(b.K) if b.allow[k] is not None and abs(b.centers[k] - c) <= wtol]
+                if same:                                  # a local line at this wavelength exists: extend it to this patch
+                    k = min(same, key=lambda k: abs(b.centers[k] - c))
+                    new_allow = grow_mask(comp, b.allow[k]); sub = np.flatnonzero(new_allow & ~b.allow[k])
+                    if sub.size == 0:
+                        continue
+                    trial = b.copy(); trial.allow[k] = new_allow
+                    fT, gain = refit_gain(trial, sub, np.isin(sub, comp), 4)
+                    ok = gain >= L["accept_frac"]
+                    if verbose:
+                        print(f"  extend local {b.centers[k]:.1f} nm by a {len(comp)}-spectrum patch at {c:.1f} nm: BIC gain in {gain:.0%} -> "
+                              f"{'yes' if ok else 'no'}", flush=True)
+                    if ok:
+                        b = trial; final = fit_set(xm, ym, b, o["final_starts"], o, workers, idx=idx_all); changed += 1
+                        extended.append(dict(center=round(float(b.centers[k]), 2), spectra=len(comp), round=rnd + 1))
+                    continue
+                if len([a for a in added if a["round"] == rnd + 1]) >= L["max_new"]:
+                    continue
+                allow = grow_mask(comp)
+                # a local line is a localized emitter: never broader than the "broad" boundary (no patch-confined fillers)
+                wcap = 0.95 * o.get("broad_x_instrument", 5.0) * inst(c)
+                trial = b.with_emitter(c, wtol, wmin, min(max(3 * w, 2 * inst(c)), wcap), allow=allow)
+                sub = np.flatnonzero(allow); core = np.isin(sub, comp)
+                fT, gain = refit_gain(trial, sub, core, 4)
+                jn = int(np.argmin(np.abs(trial.centers - c)))
+                ok_res = True
+                for q in np.flatnonzero(core):
+                    tj = fT.tab[q, jn]
+                    for k in range(trial.K):
+                        if k != jn and fT.tab[q, k, 3] > 0.02 * max(fT.tab[q, :, 3].sum(), 1e-300) and \
+                                pair_unresolved(abs(fT.tab[q, k, 0] - tj[0]), fT.tab[q, k, 2], tj[2], lambda: 0.0, o):
+                            ok_res = False
+                accept = gain >= L["accept_frac"] and ok_res
+                if verbose:
+                    print(f"  local {c:.1f} nm, {len(comp)} spectra: BIC gain in {gain:.0%}, resolved {ok_res} -> "
+                          f"{'add' if accept else 'reject'}", flush=True)
+                if accept:
+                    b = trial; final = fit_set(xm, ym, b, o["final_starts"], o, workers, idx=idx_all); changed += 1
+                    added.append(dict(center=round(c, 2), spectra=len(comp), patch=int(allow.sum()), bic_gain_fraction=round(gain, 3),
+                                      round=rnd + 1))
+        if not changed:
             break
-    return b, final, added
+    # completion: a spectrum outside a local line's patch that shows an unexplained peak inside that line's window gets
+    # the line too, if its own BIC improves by spec_gain (decided spectrum by spectrum)
+    want = {}
+    for s in (range(S) if L["completion"] else []):
+        lim = (lambda yy, sg=sig[s]: np.maximum(L["noise_k"] * sg, 3.0 * np.sqrt(np.maximum(yy, 0.0))))
+        found = _residual_peaks(np.asarray(xs[s]), np.asarray(ys[s]), keeps[s], final.params[s], b.psb, lim, inst, o, L) + \
+            _data_peaks(np.asarray(xs[s]), np.asarray(ys[s]), keeps[s], final.params[s], b.psb, sig[s], inst, L)
+        for c, h, w in found:
+            ks = [k for k in range(b.K) if b.allow[k] is not None and not b.allow[k][s] and b.lo[k] <= c <= b.hi[k]]
+            if ks:
+                want.setdefault(min(ks, key=lambda k: abs(b.centers[k] - c)), set()).add(s)
+    for k, sp in sorted(want.items()):
+        sp = np.array(sorted(sp))
+        trial = b.copy(); trial.allow[k] = b.allow[k].copy(); trial.allow[k][sp] = True
+        fT = fit_set([xm[i] for i in sp], [ym[i] for i in sp], trial, o["final_starts"], o, workers, idx=sp)
+        d = _bic(fT.sse, final.n[sp], 4) - _bic(final.sse[sp], final.n[sp], 0)
+        good = sp[d < -o["spec_gain"]]
+        if good.size:
+            b = b.copy(); b.allow[k] = b.allow[k].copy(); b.allow[k][good] = True
+            extended.append(dict(center=round(float(b.centers[k]), 2), spectra=int(good.size), round="completion"))
+            if verbose:
+                print(f"  complete local {b.centers[k]:.1f} nm in {good.size} of {sp.size} spectra", flush=True)
+    if want:
+        final = fit_set(xm, ym, b, o["final_starts"], o, workers, idx=idx_all)
+    # 3. necessity: drop local lines the data do not require
+    again = True
+    while again:
+        again = False
+        for k in [k for k in range(b.K) if b.allow[k] is not None]:
+            core_s = np.flatnonzero(b.allow[k] & (final.share[:, k] >= 0.02))
+            if core_s.size == 0:
+                trial = b.without(k); again = True
+            else:
+                trial = b.without(k); sub = core_s
+                fT = fit_set([xm[i] for i in sub], [ym[i] for i in sub], trial, o["final_starts"], o, workers, idx=sub)
+                n = final.n[sub]
+                d = _bic(fT.sse, n, 0) - _bic(final.sse[sub], n, 4)       # > 0: worse without the line
+                need = float(np.mean(d > o["spec_gain"]))
+                again = need < L["accept_frac"]
+            if again:
+                if verbose:
+                    print(f"  drop local {b.centers[k]:.1f} nm (not necessary)", flush=True)
+                removed.append(round(float(b.centers[k]), 2))
+                b = trial; final = fit_set(xm, ym, b, o["final_starts"], o, workers, idx=idx_all)
+                break
+    added = [a for a in added if all(abs(a["center"] - r) > 1e-6 for r in removed)]
+    return b, final, dict(added=added, extended=extended, removed=removed)

@@ -45,10 +45,22 @@ def noise_sigma(y):
     return max(1.4826 * float(np.median(np.abs(d2 - np.median(d2)))) / np.sqrt(6.0), 1e-6)
 
 
-def cosmic_keep(y, sigma):
-    """True = keep. Runs of <= 2 px far above a 7-px running median are cosmic rays."""
-    med = median_filter(y, size=7, mode="nearest")
+COSMIC_SHOULDER = 0.1      # 2.5: a cosmic ray has no shoulders. Any real line is at least instrument-broadened, so with
+#                            sampling step <= instrument FWHM its neighbouring pixels carry >= exp(-4 ln2) ~ 6 % (13 % at
+#                            0.85 nm step and 1.0 nm FWHM) of its peak; a spike whose neighbours rise <= 10 % is not light.
+
+
+def cosmic_keep(y, sigma, shoulder=COSMIC_SHOULDER):
+    """True = keep. A run of <= 2 px far above a 7-px running median is a cosmic ray only if it is isolated: a cosmic ray
+    is extremely intense with essentially no bandwidth, so the pixels just outside the run stay near the local baseline
+    (10th percentile over +-15 px), at most `shoulder` x the run's height above it. A sharp emitter line or a line top has
+    elevated neighbours and is kept. shoulder=None restores the 2.0-2.4 rule (every short hot run)."""
+    from scipy.ndimage import percentile_filter
+    # "mirror" counts an edge spike once (with "nearest" the repeated edge pixel raises its own median, so a cosmic ray
+    # in the first or last 3 px was never hot); the 2.0-2.4 rule keeps "nearest"
+    med = median_filter(y, size=7, mode="nearest" if shoulder is None else "mirror")
     hot = (y - med) > np.maximum(8.0 * sigma, 0.05 * max(float(med.max() - med.min()), 1.0))
+    base = percentile_filter(y, 10, size=31, mode="nearest") if shoulder is not None else None
     keep = np.ones(y.size, bool)
     i = 0
     while i < y.size:
@@ -57,7 +69,13 @@ def cosmic_keep(y, sigma):
             while j < y.size and hot[j]:
                 j += 1
             if j - i <= 2:
-                keep[i:j] = False
+                if shoulder is None:
+                    keep[i:j] = False
+                else:
+                    height = float(y[i:j].max() - base[i:j].max())
+                    side = max(float(y[i - 1] - base[i - 1]) if i > 0 else 0.0, float(y[j] - base[j]) if j < y.size else 0.0)
+                    if height > 0 and side <= shoulder * height:
+                        keep[i:j] = False
             i = j
         else:
             i += 1
