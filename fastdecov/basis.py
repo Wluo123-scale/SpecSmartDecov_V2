@@ -56,7 +56,9 @@ def cosmic_keep(y, sigma, shoulder=COSMIC_SHOULDER):
     (10th percentile over +-15 px), at most `shoulder` x the run's height above it. A sharp emitter line or a line top has
     elevated neighbours and is kept. shoulder=None restores the 2.0-2.4 rule (every short hot run)."""
     from scipy.ndimage import percentile_filter
-    med = median_filter(y, size=7, mode="nearest")
+    # "mirror" counts an edge spike once (with "nearest" the repeated edge pixel raises its own median, so a cosmic ray
+    # in the first or last 3 px was never hot); the 2.0-2.4 rule keeps "nearest"
+    med = median_filter(y, size=7, mode="nearest" if shoulder is None else "mirror")
     hot = (y - med) > np.maximum(8.0 * sigma, 0.05 * max(float(med.max() - med.min()), 1.0))
     base = percentile_filter(y, 10, size=31, mode="nearest") if shoulder is not None else None
     keep = np.ones(y.size, bool)

@@ -107,7 +107,7 @@ def unexplained_peaks(res, phys=None):
             for s in range(len(res.ids))]
 
 
-def per_spectrum(res, limit=None, snr_classes=None):
+def per_spectrum(res, limit=None, snr_classes=None, phys=None):
     """Per-spectrum checks shared by quality() and save(), computed once: residual limit (max |r|, ratio, pass), peak
     SNR, peak height, spectrum class and clipped-pixel count."""
     limit = tuple(limit or (RESIDUAL_LIMIT["floor"], RESIDUAL_LIMIT["k_sqrt"]))
@@ -116,7 +116,7 @@ def per_spectrum(res, limit=None, snr_classes=None):
     psnr, height = peak_snr(res)
     clipped = np.array([0 if res.method == "legacy" else int((~B.clip_keep(y)).sum()) for y in res.ys])
     return dict(limit=limit, bounds=bounds, mx=mx, ratio=ratio, rok=rok, psnr=psnr, height=height,
-                cls=classify(psnr, bounds), clipped=clipped, unexplained=unexplained_peaks(res))
+                cls=classify(psnr, bounds), clipped=clipped, unexplained=unexplained_peaks(res, phys))
 
 
 def _audit(res, ps):
@@ -131,7 +131,7 @@ def _audit(res, ps):
                 worst=[dict(spectrum_id=sid, center_nm=c, height=hh) for hh, sid, c in worst])
 
 
-def quality(res, limit=None, snr_classes=None, ps=None):
+def quality(res, limit=None, snr_classes=None, ps=None, phys=None):
     """Residual pass rate (RMS <= max(2.5 % peak, 2 sigma), max <= max(12 % peak, 8 sigma)), reduced chi^2, and the
     per-pixel residual limit check (see residual_check); limit = (floor, k_sqrt), default RESIDUAL_LIMIT.
     ps: per_spectrum() results, if already computed."""
@@ -143,7 +143,7 @@ def quality(res, limit=None, snr_classes=None, ps=None):
         ok.append(bool(np.sqrt(np.mean(r ** 2)) <= max(PASS["rms_peak"] * pk, PASS["rms_sigma"] * sg) and
                        np.abs(r).max() <= max(PASS["max_peak"] * pk, PASS["max_sigma"] * sg)))
         rch.append(float(r @ r / max(n - res.params.shape[1], 1) / sg ** 2))
-    ps = ps or per_spectrum(res, limit, snr_classes)
+    ps = ps or per_spectrum(res, limit, snr_classes, phys)
     (floor, k_sqrt), bounds = ps["limit"], ps["bounds"]
     mx, ratio, rok, cls = ps["mx"], ps["ratio"], ps["rok"], ps["cls"]; okv = np.array(ok)
     by_class = {}
@@ -325,7 +325,7 @@ def save(res, out, name=None, phys=None, figures=False, formats=("tif",), grid=N
         grid = G.fixed(*grid)
     if isinstance(grid, dict) and not grid.get("rows"):
         grid = None
-    ps = per_spectrum(res, limit, snr_classes)
+    ps = per_spectrum(res, limit, snr_classes, phys)       # the run's physics (instrument width) for the fit audit
     bounds = ps["bounds"]
     mx, ratio, rok, psnr, height, cls = ps["mx"], ps["ratio"], ps["rok"], ps["psnr"], ps["height"], ps["cls"]
     out = Path(out); (out / "dc").mkdir(parents=True, exist_ok=True)
