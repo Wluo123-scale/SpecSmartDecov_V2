@@ -313,13 +313,15 @@ The tent map keeps its 695.35 nm g² emitter and its 708.72 nm optical-phonon re
 
 ### Fit audit
 
-Every report ends with a fit audit. It counts the spectra that still show a resolved peak the fit does not explain, says where those peaks are, and lists the spectra to inspect first. `spectra.tsv` gives the unexplained peak positions per spectrum (`unexplained_peaks_nm`). At 150 g/mm these are typically crowded lines or sharp lines on band-edge emission, which are the least reliable fits and candidates for high-resolution follow-up.
+Every report ends with a fit audit. It counts the spectra that still show a resolved peak the fit does not explain, says where those peaks are, and lists the spectra to inspect first. `spectra.tsv` gives the unexplained peak positions per spectrum (`unexplained_peaks_nm`). At 150 g/mm these are typically crowded lines or sharp lines on band-edge emission, which are the least reliable fits and candidates for high-resolution follow-up. The audit uses the run's physics, including the instrument width from `--physics`.
 
 ### Cosmic rays
 
 A run of ≤ 2 pixels far above the running median is masked as a cosmic ray only if it is isolated. The pixels just outside it must stay within 10 % of its height above the local baseline (10th percentile over ±15 pixels). Any real line is at least instrument-broadened, so its neighbouring pixels are elevated.
 
 Until 2.4 every short hot run was masked, which removed the tops of sharp real lines: 1,338 pixels on the full pillar-9 map and 130 on the tent map, including the 695 nm anchor line. With the 2.5 rule, the only pixels masked on the three reference maps are one true cosmic ray (spectrum 0655, 894 nm).
+
+**Spectrum edges.** Until 2.4, a cosmic ray in the first or last 3 pixels of a spectrum was never masked: the running median repeated the edge pixel and so contained the spike itself. The 2.5 rule mirrors the spectrum at the edges instead. The old rule is still available as `basis.cosmic_keep(y, sigma, shoulder=None)`.
 
 ## Physics parameters
 
@@ -404,7 +406,7 @@ To reproduce 2.0.0 V3 results with this package, use `pair_rule="mean"`, `bg_flo
 | `fastdecov/` | The package. Main modules: `basis3.py` (V3 discovery), `lineshape.py`, `replicas.py`, `shortlist.py`, `grid.py`, `report.py`, and `native/` (C++ solvers). |
 | `analysis.py` | V1 interface (`--input/--output/--device`) for the fixed 12-anchor legacy fit, CPU or GPU |
 | `examples/` | `fit_maps.sh` (the two reference maps) and `sdk_example.py` (ranking and shortlist) |
-| `tests/` | `pip install .[test] && pytest -q tests` (30 tests) |
+| `tests/` | `pip install .[test] && pytest -q tests` (32 tests) |
 | `manuscript/` | Methodology manuscript (`.md`/`.docx`/`.pdf`), figures, and the scripts that generate every number from verified metrics |
 | `results/` | Benchmark outputs of the three fastest ports (Go, Fortran, C++), the Python + C++ reference and the Octave/MATLAB baseline on Pillar 1 and Pillar 2. Includes `dc` tables, `.tif` figures (Git LFS: `git lfs pull`) and parity reports; see `results/README.md`. |
 
