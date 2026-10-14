@@ -76,14 +76,15 @@ All three use the same solver: bound-constrained Levenberg–Marquardt with an a
 2. Candidate lines are taken from where those fits cluster across the map.
 3. Emitters are added one at a time, while held-out BIC improves and the new line stays resolved; a red shoulder can only become a sideband.
 4. Unresolved, rare or unsupported emitters are pruned.
+5. **Local pass (default since 2.5):** lines confined to a small connected patch of pixels, too rare for the map-wide 3 % rule (for example sharp lines on band-edge emission), are added with their amplitude allowed only in that patch ([details](#local-emitters)).
 
-The number of emitters is therefore a result, not an input: 5 on the tent map, 5 on the 315-spectrum pillar-9 crop, and 7 on the full 900-spectrum pillar-9 map.
+The number of components is therefore a result, not an input: 5 on the tent map, 10 on the 315-spectrum pillar-9 crop, and 13 on the full 900-spectrum pillar-9 map.
 
 ## Command line
 
 ```text
 fastdecov fit INPUT_DIR OUTPUT_DIR [--method v3|v2|legacy] [--grid auto|none|ROWSxCOLS[s]] [--physics FILE]
-              [--residual-limit FLOOR,K] [--snr-classes LOW,HIGH] [--no-residual-features] [--local-emitters]
+              [--residual-limit FLOOR,K] [--snr-classes LOW,HIGH] [--no-residual-features] [--no-local-emitters]
               [--threads N] [--figures] [--png] [--name NAME] [--pattern '*.txt'] [--verbose]
 fastdecov report OUTPUT_DIR            # print the emitter report of a finished run
 fastdecov physics [--template FILE]    # show / copy the physics parameters
@@ -98,7 +99,7 @@ python -m fastdecov ...                # same as `fastdecov`
 | `--residual-limit` | `100,3` | Per-pixel residual check \|r\| ≤ max(FLOOR, K√y), reported only ([details](#spectrum-classes-and-the-residual-limit)). |
 | `--snr-classes` | `20,300` | Peak-SNR bounds of the substrate / weak / emitter spectrum classes. |
 | `--no-residual-features` | off | Skip the phonon-replica and separate-emitter diagnostic (`residual_features.*` and the `replica of #N` labels). The Voigt line-shape report still runs. |
-| `--local-emitters` | off | V3, experimental: also add emitters confined to a small connected patch of the map ([details](#local-emitters-experimental)). |
+| `--no-local-emitters` | local pass on | V3: skip the local pass that adds emitters confined to a small connected patch of the map ([details](#local-emitters)). |
 | `--threads` | all available | CPU threads. In a container with a CPU quota, set it (or `OMP_NUM_THREADS`) to the quota. |
 | `--figures`, `--png` | off | Write `dc/dc_<id>.tif` fit figures (data, fit, background, each ZPL, dashed sidebands, masked pixels, residual with the limit band); `--png` adds PNG copies. |
 
@@ -197,13 +198,13 @@ Every fitted pixel is also checked against **|r| ≤ max(100, 3√y)**:
 
 It is a report: `spectra.tsv` gives each spectrum's max |r| and ratio to the limit, and the figures draw the band.
 
-**Default V3, 2.4.0** (fit pass rate / residual limit met):
+**Default V3, 2.5.0** (fit pass rate / residual limit met):
 
 | Map | substrate | weak | emitter |
 |---|---|---|---|
 | Tent map (pillar 6), 121 spectra | – | 39 spectra: 51 % / 56 % | 82: 95 % / 41 % |
-| Pillar 9 crop, 315 | – | 24: 62 % / 42 % | 291: 75 % / 1 % |
-| Pillar 9 full, 900 | 93: 94 % / 100 % | 446: 63 % / 77 % | 361: 96 % / 4 % |
+| Pillar 9 crop, 315 | – | 24: 71 % / 42 % | 291: 90 % / 2 % |
+| Pillar 9 full, 900 | 93: 94 % / 100 % | 446: 67 % / 80 % | 361: 96 % / 4 % |
 
 Map-wide fractions are dominated by the substrate. On pillar-9 emitter spectra, the typical max |r| is about 350–570 counts on peaks of 4,000–13,000 counts. That is the line-shape and dense-cluster error that 150 g/mm cannot resolve, and the reason for the follow-up shortlist.
 
@@ -230,7 +231,7 @@ Nothing is fitted away.
 
 **Results:**
 - **Tent map.** The 708.67 nm line (25 spectra) is an optical-phonon replica of the 695.99 nm emitter: offset 31.9 meV (IQR 1.2 meV), width ratio 1.29, area ratio 0.56 %, Spearman 0.85. The assignment was confirmed by the authors from the map.
-- **Pillar 9 full map.** Recurring bumps near 600–630 and 703 nm are possible separate emitters.
+- **Pillar 9 full map.** Recurring bumps near 600–605 and 703 nm are possible separate emitters. Since 2.5, the sharp 616–629 nm lines that 2.4 left here are fitted by the local pass.
 - **Synthetic check.** On the 12 held-out synthetic maps, which contain no discrete replicas, no replica and no separate emitter is reported.
 
 ### Line shape (Voigt decomposition)
@@ -278,17 +279,31 @@ Broad components and phonon replicas are never listed.
 | Map | Shortlist (rank: line, tier, ν_intrinsic, grating) |
 |---|---|
 | Tent map | 1: **695.35 nm**, tier 1, 0.76, 600 g/mm, pixels 0053/0063/0074 · 2: 627.85 nm, tier 2, 1.0, 2400 g/mm |
-| Pillar 9 full | 1: **724.86 nm**, tier 1, 0.0, 600 g/mm, pixels 0465/0466/0558 · 2: 718.15 nm, tier 1, 1.0, 2400 g/mm · 3–4: 683.61, 733.38 nm, tier 2 · then possible separate emitters (703, 617, 601, 629 nm …) |
-| Pillar 9 crop | 718.11 and 724.24 nm, tier 2 (not isolated in this crop) · possible separate emitters 689, 703, 674, 621 nm |
+| Pillar 9 crop | 1: **688.8 nm**, tier 1 · then 718.07 and 724.16 nm, tier 2 |
+| Pillar 9 full | All strong lines are tier 2, because the local lines at 716.5 and 722.1 nm make 718.15 and 724.91 nm non-isolated. 724.91 nm has ν_intrinsic 0.0 (600 g/mm, pixels 0465/0466/0558), and the band-edge line 628.95 nm has ν_intrinsic 0.10 (600 g/mm, pixels 0223/0224/0222). |
 
-### Local emitters (experimental)
+### Local emitters
 
-V3 keeps an emitter only if it matters in at least 3 % of the map, so a line present in a handful of pixels can be missed. `--local-emitters` adds a pass after discovery:
+The map-wide discovery keeps an emitter only if it matters in at least 3 % of the map, and it picks candidates from the map-averaged residual. A line present in a handful of pixels is diluted in that average, although such localized lines are prime single-photon candidates. The local pass (on by default since 2.5; `--no-local-emitters` skips it) runs after discovery:
 - **Candidates:** residual peaks ≥ 2× the residual limit, at least 0.6× the instrument width, and resolved from every fitted line.
-- **Patches:** candidates at the same wavelength (within half the strain range) that form connected patches of ≥ 2 spectra become one emitter, allowed only in those patches and their 8-neighbourhood.
+  - A peak inside a fitted phonon sideband is that sideband's shape residual only if it is about as broad as the sideband.
+  - A peak narrower than 0.7× the sideband width is a separate line, because a sideband is at least as broad as its ZPL (2.5).
+- **Patches:** candidates at the same wavelength (within half the strain range) that form connected patches of ≥ 2 spectra become one emitter. Its amplitude is allowed only in those patches and their 8-neighbourhood, so it cannot split a line elsewhere.
 - **Acceptance:** the emitter is kept if per-spectrum BIC improves in at least half of the patch and it stays resolved.
 
-Measured with 2.1 on the pillar-9 crop, it added 4 emitters (for example 672.5 nm in 28 spectra) and raised the fit pass rate from 0.74 to 0.83. It barely changes the residual-limit fraction, can split one strain-shifted emitter into two patches, and is 2–4× slower, so it stays opt-in. The residual diagnostic's "possible separate emitters" point to the same lines without changing the fit.
+**Why it became the default.** On the full pillar-9 map, 2.4 missed sharp lines at 616–629 nm (up to about 1,500 counts) sitting on the 610 nm band-edge emission. The band-edge component's fitted sideband covered them, and they were too localized for the map-wide rule.
+
+| Map | 2.4 → 2.5 |
+|---|---|
+| Pillar 9 full (900) | The 628.95 nm line is fitted (shortlisted, ν_intrinsic 0.10); fit pass rate 0.79 → 0.81; spectra within the residual limit in 595–650 nm 79 % → 83 % |
+| Pillar 9 crop (315) | Fit pass rate 0.74 → 0.88; a new tier-1 line at 688.8 nm |
+| Tent map | Unchanged (the 695.35 nm g² emitter, its sideband and its 708.67 nm replica) |
+| 12 held-out synthetic maps | All metrics identical; the pass adds nothing there |
+| `tests/` | A synthetic band-edge map reproduces the 2.4 miss and the 2.5 fix |
+
+**Limits:**
+- **One feature may be split into pieces:** 624.9, 626.5 and 629.0 nm on the full map. These may be one emitter shifting across the map or separate lines.
+- **Slower:** the full map takes about 74 s instead of 30 s.
 
 ## Physics parameters
 
@@ -327,6 +342,7 @@ fastdecov fit spectra/ out/ --physics my.json
 - **The residual limit fails mainly on bright emitter spectra,** from line shape and dense clusters, not from missing emitters.
 - **The Lorentzian width is poorly constrained** below about half the instrument FWHM; the shortlist then recommends the finest grating.
 - **The replica diagnostic needs the parent emitter to be absent from part of the map;** otherwise it reports only a "possible replica".
+- **Localized lines can be fragmented** into a few patch emitters at nearby wavelengths (see [Local emitters](#local-emitters)).
 
 ## Requirements and performance
 
@@ -339,22 +355,24 @@ fastdecov fit spectra/ out/ --physics my.json
 | Map | Spectra | Time |
 |---|---|---|
 | tent map | 121 | 8 s |
-| pillar-9 crop | 315 | 16 s |
-| full pillar-9 map | 900 | 32 s |
+| pillar-9 crop | 315 | 26 s |
+| full pillar-9 map | 900 | 74 s |
 
 V3 discovery and fitting alone take about 2–10 s. The original MATLAB code under Octave needs about 325 s for the 315-spectrum crop with fixed peaks, and fits it much worse.
 
 **Other languages.** The algorithm was also ported to C++, Rust, Fortran, Julia, Java, Go, Numba and CUDA. The ports give byte-identical results to each other and to **version 2.0.0** of this package; Go was the fastest. They do not include the 2.1+ changes:
 - clipped-peak masking;
 - the 2.2 resolvability rule and background floor;
-- the diagnostics, line-shape report and shortlist.
+- the diagnostics, line-shape report and shortlist;
+- the local pass (default since 2.5).
 
-To reproduce 2.0.0 V3 results with this package, use `pair_rule="mean"`, `bg_floor_sigma=None`, and maps without clipped peaks. The ports and their benchmark are kept in the development repository; the benchmark outputs are in `results/`.
+To reproduce 2.0.0 V3 results with this package, use `pair_rule="mean"`, `bg_floor_sigma=None`, `local=False` (`--no-local-emitters`), and maps without clipped peaks. The ports and their benchmark are kept in the development repository; the benchmark outputs are in `results/`.
 
 ## Version history
 
 | Version | Changes |
 |---|---|
+| **2.5.0** | Local pass on by default (`--no-local-emitters` to skip); a peak much narrower than a fitted sideband is a separate line, so sharp lines on band-edge emission are found |
 | **2.4.0** | Voigt line-shape report (Lorentzian width, extra Gaussian, ν_intrinsic); follow-up shortlist (`shortlist.md`); `g2_order`; `follow_up_gratings_meV` |
 | **2.3.0** | Residual-feature diagnostic: optical-phonon replica vs separate emitter, tested against the map; `optical_phonon_max_meV`; `replica of #N` labels |
 | **2.2.0** | Narrow lines on broad (band-edge) components; background floor ≥ −3σ; `broad` label |
@@ -368,7 +386,7 @@ To reproduce 2.0.0 V3 results with this package, use `pair_rule="mean"`, `bg_flo
 | `fastdecov/` | The package. Main modules: `basis3.py` (V3 discovery), `lineshape.py`, `replicas.py`, `shortlist.py`, `grid.py`, `report.py`, and `native/` (C++ solvers). |
 | `analysis.py` | V1 interface (`--input/--output/--device`) for the fixed 12-anchor legacy fit, CPU or GPU |
 | `examples/` | `fit_maps.sh` (the two reference maps) and `sdk_example.py` (ranking and shortlist) |
-| `tests/` | `pip install .[test] && pytest -q tests` (29 tests) |
+| `tests/` | `pip install .[test] && pytest -q tests` (30 tests) |
 | `manuscript/` | Methodology manuscript (`.md`/`.docx`/`.pdf`), figures, and the scripts that generate every number from verified metrics |
 | `results/` | Benchmark outputs of the three fastest ports (Go, Fortran, C++), the Python + C++ reference and the Octave/MATLAB baseline on Pillar 1 and Pillar 2. Includes `dc` tables, `.tif` figures (Git LFS: `git lfs pull`) and parity reports; see `results/README.md`. |
 

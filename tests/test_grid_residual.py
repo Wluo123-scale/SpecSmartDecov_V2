@@ -214,3 +214,28 @@ def test_shortlist_written_and_excludes_broad_and_replicas(tmp_path):
             assert rows[it["emitter"]]["kind"] == "emitter line"
     assert [it["rank"] for it in sl] == list(range(1, len(sl) + 1))
     assert (out / "shortlist.md").is_file()
+
+
+def _bandedge_map(seed=11):
+    """15 x 15 map: band-edge emission at 610 nm with a broad red shoulder everywhere (V3 gives it a wide sideband), a
+    map-wide emitter at 715 nm, and a sharp line at 628.5 nm in a 2 x 2 patch only (1.8 % of the map, below min_prev)."""
+    from fastdecov import api, emitter
+    rng = np.random.default_rng(seed); x = np.linspace(580, 760, 420); ys, ids = [], []
+    for i in range(225):
+        r, c = divmod(i, 15)
+        y = emitter.evaluate(np.array([5.0, 0.0, 300 * (0.6 + 0.4 * rng.random()), 610.0, 0.6, 11.0, 0.45, 2.0, 6.0]), x, [1])
+        y = y + emitter.evaluate(np.array([0.0, 0.0, 2500.0 * (0.7 + 0.3 * rng.random()), 715.0 + 0.1 * r, 0.3, 4.0]), x, [0])
+        if 7 <= r <= 8 and 7 <= c <= 8:
+            y = y + emitter.evaluate(np.array([0.0, 0.0, 900.0, 628.5, 0.3, 2.8]), x, [0])
+        ys.append(y + rng.normal(0, 4, x.size)); ids.append(f"{i + 1:04d}")
+    return api.SpectrumMap(ids, [x] * 225, ys)
+
+
+def test_localized_line_on_band_edge_not_shielded_by_its_sideband():
+    """2.5: a sharp line much narrower than the band-edge component's fitted sideband is a separate line, found by the
+    (default) local pass; with the 2.4 behaviour (local_psb_shield=False) the sideband shields it."""
+    from fastdecov import api
+    m = _bandedge_map()
+    near = lambda res: [res.median(0, k) for k in range(res.K) if abs(res.median(0, k) - 628.5) < 1.0]
+    assert near(api.fit_map(m, "v3", threads=2, grid=(15, 15))), "2.5 should find the localized 628.5 nm line"
+    assert not near(api.fit_map(m, "v3", threads=2, grid=(15, 15), local_psb_shield=False))

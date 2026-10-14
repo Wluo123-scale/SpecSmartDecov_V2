@@ -25,7 +25,15 @@ OPTS3 = dict(resolve=0.85, min_prev=0.03, min_share=0.02, accept_bic=10.0, spec_
              init_support=0.01, new_tol=physics.load()["strain_shift_halfrange_nm"], new_width_max=60.0, psb_r=(0.0, 1.0), psb_dd=(0.0, 6.0), psb_dw=(0.0, 15.0),
              starts=(8.0, 3.0), final_starts=("mid", 5.0, 2.0), psb_first=True,
              width_mode="fit", distinct_r=None, dip_test=False, dip_sigma=3.0, dip_rel=0.02, dip_prev=0.03,
-             pair_rule="narrow", width_ratio=2.0, mimic_r=0.8, bg_floor_sigma=3.0, psb_width_gate=False)
+             pair_rule="narrow", width_ratio=2.0, mimic_r=0.8, bg_floor_sigma=3.0, psb_width_gate=False, support_tries=0,
+             local_psb_shield=True, no_psb_on_broad=False, broad_x_instrument=5.0)
+# 2.5: local_psb_shield - in the local pass a peak much narrower than a fitted sideband (< 0.7 x its width) is a separate
+# line, not that sideband's shape residual (a sideband is at least as broad as its ZPL). no_psb_on_broad - a broad
+# component (FWHM > broad_x_instrument x instrument, e.g. band-edge emission) gets no tied sideband. Experimental, off:
+# psb_width_gate (growth: a candidate narrower than an emitter is not tried as its sideband) and support_tries (when
+# no candidate of the map-averaged residual profile is accepted, also try up to this many wavelengths where >= min_prev of
+# the spectra exceed the residual limit max(100, 3 sqrt(y)) before growth stops: localized lines (a few % of the map)
+# are diluted in the average. 0 / False restore 2.4.
 # 2.2: pair_rule "narrow" - a narrow line next to a much broader one (width ratio >= width_ratio, e.g. GaSe band-edge
 # emission) is resolved if it is >= resolve x ITS OWN FWHM from the broad centre and the broad component's spatial map
 # does not just track it (share-map correlation < mimic_r; a pedestal that tracks a narrow line is how splitting fakes
@@ -304,8 +312,26 @@ def grow(xs, ys, opts=None, workers=None, verbose=False):
             acc += np.interp(x0, xA[s], z); cnt += np.interp(x0, xA[s], kA[s].astype(float))
         prof = np.convolve(acc / np.maximum(cnt, 1.0), np.ones(3) / 3, mode="same")
         order = [i for i in np.argsort(-prof, kind="stable") if 0 < i < x0.size - 1 and prof[i] >= prof[i - 1] and prof[i] >= prof[i + 1]]
+        tried = order[:o["tries"]]
+        if o.get("support_tries"):
+            # support profile: fraction of spectra whose (3-px smoothed) residual exceeds the residual limit
+            sup = np.zeros(x0.size)
+            for s in range(len(xA)):
+                r = np.where(kA[s], yA[s] - emitter.evaluate(fA.params[s], xA[s], b.psb), 0.0)
+                r = np.convolve(r, np.ones(3) / 3, mode="same")
+                lim = np.maximum(100.0, 3.0 * np.sqrt(np.maximum(yA[s], 0.0)))
+                sup += np.interp(x0, xA[s], (r > lim).astype(float))
+            sup = np.convolve(sup / max(len(xA), 1), np.ones(3) / 3, mode="same")
+            near = lambda i: any(abs(x0[i] - x0[t]) < 1.0 for t in tried)
+            extra = [i for i in np.argsort(-sup, kind="stable") if 0 < i < x0.size - 1 and sup[i] >= o["min_prev"]
+                     and sup[i] >= sup[i - 1] and sup[i] >= sup[i + 1]]
+            for i in extra:
+                if len(tried) >= o["tries"] + o["support_tries"]:
+                    break
+                if not near(i):
+                    tried.append(i)
         accepted = False
-        for i in order[:o["tries"]]:
+        for i in tried:
             c = float(x0[i])
             cen = np.array([fA.med(0, j) for j in range(b.K)]); wid = np.array([fA.med(2, j) for j in range(b.K)])
             j = int(np.argmin(np.abs(cen - c))) if b.K else -1
@@ -315,6 +341,8 @@ def grow(xs, ys, opts=None, workers=None, verbose=False):
                 red = [k for k in range(b.K) if not b.psb[k] and 0 < c - cen[k] <= 0.5 * wid[k] + o["psb_dd"][1] + 0.5 * wid[k]]
                 if o.get("psb_width_gate"):          # a sideband is at least as broad as its ZPL: a narrower candidate is not one
                     red = [k for k in red if wfun(c, wmin) >= wid[k]]
+                if o.get("no_psb_on_broad"):         # band-edge / broad components carry no tied sideband
+                    red = [k for k in red if wid[k] <= o["broad_x_instrument"] * physics.instrument_fwhm_nm(cen[k])]
                 if red:
                     moves.append(("psb", b.with_psb(min(red, key=lambda k: c - cen[k]))))
             wj = min(wid[j], WF(cen[j], wid[j]), WF(c, wid[j])) if (b.K and WF) else (wid[j] if b.K else 0.0)
@@ -325,7 +353,8 @@ def grow(xs, ys, opts=None, workers=None, verbose=False):
             if b.K == 0 or abs(c - cen[j]) >= o["resolve"] * wj:
                 moves.append(("add", b.with_emitter(c, o["new_tol"], wmin, o["new_width_max"])))
             else:
-                if c > cen[j] and not b.psb[j] and not moves:
+                if c > cen[j] and not b.psb[j] and not moves and not (o.get("psb_width_gate") and wfun(c, wmin) < wid[j]) \
+                        and not (o.get("no_psb_on_broad") and wid[j] > o["broad_x_instrument"] * physics.instrument_fwhm_nm(cen[j])):
                     moves.append(("psb", b.with_psb(j)))
                 if DR is not None:          # unresolved: allowed only if its map is distinct (checked after the fit)
                     moves.append(("add", b.with_emitter(c, o["new_tol"], wmin, o["new_width_max"])))
@@ -458,7 +487,7 @@ def _residual_peaks(x, y, keep, p, psb, limit_fn, inst_fn, o, L):
                 pc, pw = ck + tab[k, 5], tab[k, 6]
                 # inside a fitted sideband: only a peak of comparable width can be that sideband's shape residual; a much
                 # narrower peak is a separate line (a sideband is at least as broad as its ZPL)
-                if abs(c - pc) <= 0.5 * pw and not (o.get("psb_width_gate") and wi < 0.7 * pw):
+                if abs(c - pc) <= 0.5 * pw and not (o.get("local_psb_shield", o.get("psb_width_gate")) and wi < 0.7 * pw):
                     clash = True; break
         if not clash:
             out.append((c, float(r[i]), float(wi)))
