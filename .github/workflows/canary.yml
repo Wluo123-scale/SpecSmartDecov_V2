@@ -23,3 +23,5 @@ jobs:
         run: python .github/scripts/check_canary.py
       - name: run validator regression tests
         run: python -m unittest tests/test_canary_check.py -v
+      - name: run contamination probe tests (fake local endpoint, no model calls)
+        run: python -m unittest discover -s tools/contamination_probe -p 'test_*.py' -v

@@ -25,6 +25,7 @@
     "governance": [".md"],
     "manuscript": [".md", ".py", ".sh"],
     "tests": [".py"],
-    "examples": [".py", ".sh"]
+    "examples": [".py", ".sh"],
+    "tools": [".md", ".py"]
   }
 }

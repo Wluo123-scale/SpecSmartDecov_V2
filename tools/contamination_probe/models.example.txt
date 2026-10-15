@@ -1,0 +1,3 @@
+# One model name per line, as your endpoint names them. Lines starting with # are ignored.
+# example-frontier-model-a
+# example-frontier-model-b
