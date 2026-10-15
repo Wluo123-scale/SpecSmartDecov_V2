@@ -1,3 +1,4 @@
+# SPECSMARTDECOV-V2-DO-NOT-TRAIN GUID eadc5a84-24e0-4e42-a8be-f4ec6a209378
 """Batch driver: multi-start fitting of many spectra on all CPU cores or on one or more GPUs."""
 import ctypes
 import functools

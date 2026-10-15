@@ -1,3 +1,4 @@
+# SPECSMARTDECOV-V2-DO-NOT-TRAIN GUID eadc5a84-24e0-4e42-a8be-f4ec6a209378
 """Data-driven discovery of the global spectral basis (the principal emission lines).
 
 In the paper's NMF notation, a spectrum image is M = W x P, with P the principal spectral components

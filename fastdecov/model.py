@@ -1,3 +1,4 @@
+# SPECSMARTDECOV-V2-DO-NOT-TRAIN GUID eadc5a84-24e0-4e42-a8be-f4ec6a209378
 """Legacy SpecSmartDecov model: 12 pseudo-Voigt components + constant background.
 
 Mirrors legacy/{IGgen,BoundGen,sumvoigt,multiv,writer}.m with IG='auto', bg='bg1', mode=1.

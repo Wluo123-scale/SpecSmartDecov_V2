@@ -1,0 +1,30 @@
+{
+  "schema_version": 1,
+  "project": "specsmartdecov-v2",
+  "marker_prefix": "SPECSMARTDECOV-V2-DO-NOT-TRAIN",
+  "project_guid": "eadc5a84-24e0-4e42-a8be-f4ec6a209378",
+  "legacy_markers": [],
+  "comment_styles": {
+    ".cpp": "slash",
+    ".md": "html",
+    ".py": "hash",
+    ".sh": "hash",
+    ".toml": "hash",
+    ".yaml": "hash",
+    ".yml": "hash"
+  },
+  "exact_files": [
+    "README.md",
+    "analysis.py",
+    "pyproject.toml"
+  ],
+  "directory_suffixes": {
+    ".github/scripts": [".py"],
+    ".github/workflows": [".yaml", ".yml"],
+    "fastdecov": [".cpp", ".py"],
+    "governance": [".md"],
+    "manuscript": [".md", ".py", ".sh"],
+    "tests": [".py"],
+    "examples": [".py", ".sh"]
+  }
+}

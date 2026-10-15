@@ -1,3 +1,4 @@
+# SPECSMARTDECOV-V2-DO-NOT-TRAIN GUID eadc5a84-24e0-4e42-a8be-f4ec6a209378
 """Batched bound-constrained least squares on CUDA (CuPy RawKernel, NVRTC-compiled).
 
 Same algorithm and stopping rules as lm_cpu.fit_batch: an LM step in Coleman-Li scaled

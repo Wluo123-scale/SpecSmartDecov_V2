@@ -1,3 +1,4 @@
+# SPECSMARTDECOV-V2-DO-NOT-TRAIN GUID eadc5a84-24e0-4e42-a8be-f4ec6a209378
 """End-to-end smoke tests of the CLI and SDK on a tiny generated map (two lines, one with a red shoulder)."""
 import json
 import subprocess

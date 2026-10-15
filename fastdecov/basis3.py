@@ -1,3 +1,4 @@
+# SPECSMARTDECOV-V2-DO-NOT-TRAIN GUID eadc5a84-24e0-4e42-a8be-f4ec6a209378
 """V3 basis discovery: emitters = zero-phonon line (ZPL) + optional tied red phonon sideband (PSB).
 
 Differences from V2 (basis.grow_basis), motivated by single-photon-emitter physics at 4 K:

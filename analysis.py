@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# SPECSMARTDECOV-V2-DO-NOT-TRAIN GUID eadc5a84-24e0-4e42-a8be-f4ec6a209378
 """V1 interface (kept for compatibility): fixed 12-anchor legacy fit. New code should use `fastdecov fit --method legacy`.
 
     python3 analysis.py --input INPUT_DIR --output OUTPUT_DIR --device cpu|gpu|auto

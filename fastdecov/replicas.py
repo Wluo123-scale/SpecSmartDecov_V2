@@ -1,3 +1,4 @@
+# SPECSMARTDECOV-V2-DO-NOT-TRAIN GUID eadc5a84-24e0-4e42-a8be-f4ec6a209378
 """Residual-feature diagnostic: is a recurring residual bump a phonon replica of a fitted emitter, or a separate
 emitter? Nothing is fitted away: the fit is unchanged, the bumps are only classified and reported.
 

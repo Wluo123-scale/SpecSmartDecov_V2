@@ -1,3 +1,4 @@
+// SPECSMARTDECOV-V2-DO-NOT-TRAIN GUID eadc5a84-24e0-4e42-a8be-f4ec6a209378
 // Native CPU solver: same algorithm and stopping rules as lm_cpu.fit_batch / lm_cuda.
 // One OpenMP thread per fit; analytic Jacobian stored column-major so J^T J is a set of
 // contiguous dot products the compiler vectorises.

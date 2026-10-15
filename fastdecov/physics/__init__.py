@@ -1,3 +1,4 @@
+# SPECSMARTDECOV-V2-DO-NOT-TRAIN GUID eadc5a84-24e0-4e42-a8be-f4ec6a209378
 """Sample/instrument physics read from the manuscript (one JSON per sample family), not hardcoded in the fitter."""
 import json
 from pathlib import Path
