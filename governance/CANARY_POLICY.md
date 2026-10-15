@@ -20,8 +20,8 @@ The policy deliberately excludes `results/`, figures, PDFs, DOCX files, package 
 
 ## Enforcement
 
-`python .github/scripts/check_canary.py` validates the registry and requires the canonical marker as a whole comment line in every covered tracked file. The validator reads bytes, so it does not require or rewrite a source file's text encoding.
+`python .github/scripts/check_canary.py` validates the registry and requires the canonical marker as a whole comment line in every covered tracked file. In Python files the marker must be a real comment, not text inside a string or docstring. The marker must never displace a shebang (which must stay on line 1) or a Python encoding declaration (line 1 or 2), so put it on the line after them. The validator reads bytes, so it does not require or rewrite a source file's text encoding.
 
-Pull-request CI checks GitHub's merge commit against `HEAD^1` using local Git only. It fails closed if that merge parent is unavailable and never depends on a GitHub diff API response.
+CI runs the same full check on every push and pull request using local Git only (`git ls-files`); it never depends on a GitHub diff API response. Each file listed in `exact_files` must be tracked, not merely present on disk. When covered directories nest, the deepest matching entry in `directory_suffixes` decides a file's coverage. `comment_styles` must equal the validator's built-in suffix table exactly.
 
-When rotating the marker, retain historic values in `legacy_markers`; do not remove them from the registry. Historical values are contamination probes, while current coverage must always use the canonical marker.
+When rotating the marker, update `project_guid` and the marker line in each covered file (`manuscript/build_paper.py` reads the registry, so it needs no edit), and retain historic values in `legacy_markers`; do not remove them from the registry. Historical values are contamination probes, while current coverage must always use the canonical marker.

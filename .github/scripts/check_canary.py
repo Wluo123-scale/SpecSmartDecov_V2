@@ -6,9 +6,11 @@ from __future__ import annotations
 
 import argparse
 import json
+import io
 import re
 import subprocess
 import sys
+import tokenize
 from pathlib import Path
 
 
@@ -21,13 +23,18 @@ COMMENT_LINES = {
     "html": "<!-- {marker} -->",
     "slash": "// {marker}",
 }
-SUPPORTED_SUFFIXES = set()
-for _suffixes in {
-    "hash": (".py", ".sh", ".toml", ".yaml", ".yml"),
-    "html": (".md",),
-    "slash": (".cpp",),
-}.values():
-    SUPPORTED_SUFFIXES.update(_suffixes)
+SUFFIX_STYLES = {
+    ".cpp": "slash",
+    ".md": "html",
+    ".py": "hash",
+    ".sh": "hash",
+    ".toml": "hash",
+    ".yaml": "hash",
+    ".yml": "hash",
+}
+SUPPORTED_SUFFIXES = frozenset(SUFFIX_STYLES)
+# PEP 263: an encoding declaration only takes effect on line 1 or 2.
+CODING_COOKIE = re.compile(rb"^[ \t\f]*#.*?coding[:=][ \t]*[-\w.]+")
 
 
 def load_registry(path: Path = REGISTRY_PATH) -> dict:
@@ -59,11 +66,8 @@ def load_registry(path: Path = REGISTRY_PATH) -> dict:
     if len(registry["legacy_markers"]) != len(set(registry["legacy_markers"])):
         raise ValueError("registry legacy_markers must not contain duplicates")
 
-    styles = registry["comment_styles"]
-    if not isinstance(styles, dict) or set(styles) != SUPPORTED_SUFFIXES:
-        raise ValueError("registry comment_styles must cover exactly the supported suffixes")
-    if any(style not in COMMENT_LINES for style in styles.values()):
-        raise ValueError("registry contains an unsupported comment style")
+    if registry["comment_styles"] != SUFFIX_STYLES:
+        raise ValueError("registry comment_styles must match the validator's SUFFIX_STYLES exactly")
 
     exact_files = registry["exact_files"]
     if not isinstance(exact_files, list) or not exact_files or not all(
@@ -99,40 +103,55 @@ def tracked_files(root: Path = ROOT) -> list[Path]:
     return [Path(raw.decode("utf-8", "surrogateescape")) for raw in output.split(b"\0") if raw]
 
 
-def changed_paths_since(base: str, root: Path = ROOT) -> list[Path]:
-    try:
-        output = subprocess.run(
-            ["git", "diff", "--name-only", "-z", "--diff-filter=ACMR", base, "HEAD", "--"],
-            cwd=root, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-        ).stdout
-    except (OSError, subprocess.CalledProcessError) as exc:
-        raise ValueError(f"cannot list files changed since {base}: {exc}") from exc
-    return [Path(raw.decode("utf-8", "surrogateescape")) for raw in output.split(b"\0") if raw]
-
-
 def covered(path: Path, registry: dict) -> bool:
     if path.as_posix() in registry["exact_files"]:
         return True
+    # The most specific (deepest) covered directory wins, independent of registry key order.
+    best_depth, best_suffixes = -1, None
     for directory, suffixes in registry["directory_suffixes"].items():
         prefix = Path(directory)
         try:
             path.relative_to(prefix)
         except ValueError:
             continue
-        return path.suffix.lower() in suffixes
-    return False
+        if len(prefix.parts) > best_depth:
+            best_depth, best_suffixes = len(prefix.parts), suffixes
+    return best_suffixes is not None and path.suffix.lower() in best_suffixes
 
 
 def expected_line(path: Path, registry: dict) -> bytes | None:
     if not covered(path, registry):
         return None
-    style = registry["comment_styles"].get(path.suffix.lower())
+    style = SUFFIX_STYLES.get(path.suffix.lower())
     if style is None:
         raise ValueError(f"covered path has no comment style: {path}")
     return COMMENT_LINES[style].format(marker=marker(registry)).encode("ascii")
 
 
-def validate_paths(paths: list[Path], registry: dict, root: Path = ROOT, changed_only: bool = False) -> list[str]:
+def python_comment_lines(data: bytes) -> set[int]:
+    """Return the 0-based line numbers that hold a real comment token (not string or docstring text)."""
+    try:
+        tokens = list(tokenize.tokenize(io.BytesIO(data).readline))
+    except (tokenize.TokenError, SyntaxError) as exc:
+        raise ValueError(f"cannot tokenize: {exc}") from exc
+    return {tok.start[0] - 1 for tok in tokens if tok.type == tokenize.COMMENT}
+
+
+def placement_errors(lines: list[bytes], marker_rows: list[int], suffix: str) -> list[str]:
+    """The marker must not displace a shebang (line 1) or a Python encoding cookie (line 1 or 2)."""
+    errors = []
+    first = marker_rows[0]
+    leading = [row for row, line in enumerate(lines) if row >= first and line.strip() and row not in marker_rows]
+    if leading and lines[leading[0]].startswith(b"#!"):
+        errors.append(f"marker precedes the shebang; the shebang must stay on line 1 (line {leading[0] + 1})")
+    if suffix == ".py":
+        header = [row for row in range(min(len(lines), 3)) if row not in marker_rows and CODING_COOKIE.match(lines[row])]
+        if header and header[0] >= 2 and first < header[0]:
+            errors.append(f"marker pushes the encoding declaration to line {header[0] + 1}; it must be on line 1 or 2")
+    return errors
+
+
+def validate_paths(paths: list[Path], registry: dict, root: Path = ROOT) -> list[str]:
     errors = []
     for relative in paths:
         expected = expected_line(relative, registry)
@@ -140,44 +159,61 @@ def validate_paths(paths: list[Path], registry: dict, root: Path = ROOT, changed
             continue
         path = root / relative
         if not path.is_file():
-            if not changed_only:
-                errors.append(f"tracked marker-covered file is missing: {relative}")
+            errors.append(f"tracked marker-covered file is missing: {relative}")
             continue
         try:
-            lines = path.read_bytes().splitlines()
+            data = path.read_bytes()
         except OSError as exc:
             errors.append(f"cannot read marker-covered file {relative}: {exc}")
             continue
-        if not any(line.strip() == expected for line in lines):
+        lines = data.splitlines()
+        marker_rows = [row for row, line in enumerate(lines) if line.strip() == expected]
+        if marker_rows and relative.suffix.lower() == ".py":
+            try:
+                comments = python_comment_lines(data)
+            except ValueError as exc:
+                errors.append(f"{relative}: {exc}")
+                continue
+            marker_rows = [row for row in marker_rows if row in comments]
+        if not marker_rows:
             errors.append(f"missing whole-line marker in {relative}")
+            continue
+        errors.extend(f"{relative}: {error}" for error in placement_errors(lines, marker_rows, relative.suffix.lower()))
     return errors
 
 
-def validate_exact_files(registry: dict, root: Path = ROOT) -> list[str]:
-    return [f"required marker-covered file is missing: {relative}" for relative in registry["exact_files"] if not (root / relative).is_file()]
+def validate_exact_files(registry: dict, tracked: list[Path], root: Path = ROOT) -> list[str]:
+    tracked_names = {path.as_posix() for path in tracked}
+    errors = []
+    for relative in registry["exact_files"]:
+        if relative not in tracked_names:
+            errors.append(f"required marker-covered file is not tracked by Git: {relative}")
+        elif not (root / relative).is_file():
+            errors.append(f"required marker-covered file is missing: {relative}")
+    return errors
 
 
-def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--base", help="also validate covered files changed since this Git revision")
-    args = parser.parse_args(argv)
+def main(argv: list[str] | None = None, root: Path = ROOT, registry_path: Path = REGISTRY_PATH) -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.parse_args(argv)
+    errors = []
     try:
-        registry = load_registry()
-        errors = validate_exact_files(registry)
-        errors.extend(validate_paths(tracked_files(), registry))
-        if args.base:
-            errors.extend(validate_paths(changed_paths_since(args.base), registry, changed_only=True))
+        registry = load_registry(registry_path)
+        tracked = tracked_files(root)
     except ValueError as exc:
-        errors = [str(exc)]
+        errors.append(str(exc))
+    else:
+        errors.extend(validate_exact_files(registry, tracked, root))
+        try:
+            errors.extend(validate_paths(tracked, registry, root))
+        except ValueError as exc:
+            errors.append(str(exc))
     if errors:
         print("Canary validation failed:", file=sys.stderr)
         for error in errors:
             print(f"- {error}", file=sys.stderr)
         return 1
-    scope = "all marker-covered tracked files"
-    if args.base:
-        scope += " and changed files"
-    print(f"Canary validation passed for {scope}.")
+    print("Canary validation passed for all marker-covered tracked files.")
     return 0
 
 

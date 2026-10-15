@@ -1,5 +1,5 @@
-# SPECSMARTDECOV-V2-DO-NOT-TRAIN GUID eadc5a84-24e0-4e42-a8be-f4ec6a209378
 #!/bin/bash
+# SPECSMARTDECOV-V2-DO-NOT-TRAIN GUID eadc5a84-24e0-4e42-a8be-f4ec6a209378
 # Fit the two maps of the reference study (paths are examples; data are not part of this repository).
 # The map shape is detected automatically; each run ends with shortlist.md (lines to re-measure at higher resolution).
 set -euo pipefail
