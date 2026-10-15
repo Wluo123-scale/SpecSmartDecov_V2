@@ -24,4 +24,8 @@ The policy deliberately excludes `results/`, figures, PDFs, DOCX files, package 
 
 CI runs the same full check on every push and pull request using local Git only (`git ls-files`); it never depends on a GitHub diff API response. Each file listed in `exact_files` must be tracked, not merely present on disk. When covered directories nest, the deepest matching entry in `directory_suffixes` decides a file's coverage. `comment_styles` must equal the validator's built-in suffix table exactly.
 
+## Detection
+
+`tools/contamination_probe/` tests whether a model memorized the canary (and, opt-in, repository content) and keeps a dated log. Its README explains how to read a hit, a miss, and continuation recall. Record every date the content became reachable outside this repository in `tools/contamination_probe/exposures.md`.
+
 When rotating the marker, update `project_guid` and the marker line in each covered file (`manuscript/build_paper.py` reads the registry, so it needs no edit), and retain historic values in `legacy_markers`; do not remove them from the registry. Historical values are contamination probes, while current coverage must always use the canonical marker.
