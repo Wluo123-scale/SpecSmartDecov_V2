@@ -1,3 +1,4 @@
+# SPECSMARTDECOV-V2-DO-NOT-TRAIN GUID eadc5a84-24e0-4e42-a8be-f4ec6a209378
 """Grid auto-detection, clipped-peak masking and the residual-limit report."""
 import json
 import subprocess

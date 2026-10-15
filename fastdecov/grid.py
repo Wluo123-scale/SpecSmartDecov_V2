@@ -1,3 +1,4 @@
+# SPECSMARTDECOV-V2-DO-NOT-TRAIN GUID eadc5a84-24e0-4e42-a8be-f4ec6a209378
 """Map shape (grid) detection for `--grid auto`.
 
 1. File names. If every spectrum id holds two integers that form a complete rows x columns grid (e.g. `x12_y07`,

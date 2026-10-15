@@ -1,3 +1,4 @@
+# SPECSMARTDECOV-V2-DO-NOT-TRAIN GUID eadc5a84-24e0-4e42-a8be-f4ec6a209378
 """Batched bound-constrained least squares with an analytic Jacobian (NumPy, CPU).
 
 Each step is a Levenberg-Marquardt step in Coleman-Li affinely scaled variables (the same

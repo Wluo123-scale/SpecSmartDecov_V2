@@ -1,3 +1,4 @@
+# SPECSMARTDECOV-V2-DO-NOT-TRAIN GUID eadc5a84-24e0-4e42-a8be-f4ec6a209378
 """V3 emitter model: linear background + K emitters, each a zero-phonon line (ZPL) with an optional tied phonon sideband.
 
 ZPL (pseudo-Voigt, as V1/V2): a, c, nu, s.  Phonon sideband (PSB, red side, tied to its ZPL):

@@ -1,3 +1,4 @@
+// SPECSMARTDECOV-V2-DO-NOT-TRAIN GUID eadc5a84-24e0-4e42-a8be-f4ec6a209378
 // Native CPU solver for the V3 emitter model: linear background + K emitters, each a zero-phonon line (ZPL,
 // pseudo-Voigt a, c, nu, s) optionally with a tied red phonon sideband (PSB): r*a*exp(-4ln2 v^2),
 // v = (x - c - 0.5*s - delta)/(s + dw): the PSB sits outside the ZPL half-width on the red side and is at least as broad. Per-emitter parameters: [a, c, nu, s] or [a, c, nu, s, r, delta, dw].

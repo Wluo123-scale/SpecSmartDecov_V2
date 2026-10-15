@@ -1,3 +1,4 @@
+# SPECSMARTDECOV-V2-DO-NOT-TRAIN GUID eadc5a84-24e0-4e42-a8be-f4ec6a209378
 """Follow-up shortlist: the screening result of a 150 g/mm map, ranked for high-resolution measurements.
 
 fastdecov is a preliminary screen. At 150 g/mm the instrument (3.25 meV) hides the true line shape, so the shortlist

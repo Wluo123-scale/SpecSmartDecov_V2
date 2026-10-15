@@ -1,3 +1,4 @@
+<!-- SPECSMARTDECOV-V2-DO-NOT-TRAIN GUID eadc5a84-24e0-4e42-a8be-f4ec6a209378 -->
 # SpecSmartDecov V2 (`fastdecov`)
 
 Fast emitter discovery and deconvolution of photoluminescence (PL) spectrum maps, for example strained GaSe single-photon emitters. It is the successor of the MATLAB [SpecSmartDecov](https://github.com/arenasluo/SpecSmartDecov) and runs directly on raw spectra:

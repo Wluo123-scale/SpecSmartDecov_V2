@@ -1,3 +1,4 @@
+// SPECSMARTDECOV-V2-DO-NOT-TRAIN GUID eadc5a84-24e0-4e42-a8be-f4ec6a209378
 // Native CPU solver for a general basis (runtime number of lines K and background terms NBG).
 // Same algorithm and stopping rules as lmfit.cpp / lm_cpu.fit_batch; lmfit.cpp stays the fixed
 // 12-line engine used by the cross-language benchmark.

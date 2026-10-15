@@ -1,3 +1,4 @@
+# SPECSMARTDECOV-V2-DO-NOT-TRAIN GUID eadc5a84-24e0-4e42-a8be-f4ec6a209378
 """ctypes binding to the optional C++/OpenMP solver (fastdecov/native/lmfit.cpp).
 
 Same algorithm and stopping rules as lm_cpu.fit_batch. The shared library is built on first use

@@ -1,3 +1,4 @@
+# SPECSMARTDECOV-V2-DO-NOT-TRAIN GUID eadc5a84-24e0-4e42-a8be-f4ec6a209378
 """Writers and the emitter ranking shared by the CLI and the SDK.
 
 All methods are reported in the V3 emitter layout (emitter.py): V2 lines are emitters without a phonon sideband,
