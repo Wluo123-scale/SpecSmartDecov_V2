@@ -21,7 +21,7 @@ import numpy as np
 
 from . import basis as B, basis3, emitter, grid as G, hw, model, physics, report
 
-METHODS = ("v3", "v2", "legacy")
+METHODS = ("v3", "v4", "v2", "legacy")
 
 
 @dataclass
@@ -81,7 +81,9 @@ def fit_map(m, method="v3", phys=None, threads=None, verbose=False, local=True, 
     """Discover the emitters/basis of a map and fit every spectrum. `phys`: dict or path of a physics JSON.
     v3 only: local=True (default since 2.5) adds emitters confined to a small connected patch of the map
     (basis3.local_emitters), e.g. sharp lines on band-edge emission that map-wide discovery dilutes; `grid`
-    ("auto", None, (rows, cols[, serpentine]) or a detect_grid dict) defines which spectra are neighbours."""
+    ("auto", None, (rows, cols[, serpentine]) or a detect_grid dict) defines which spectra are neighbours.
+    v4 (basis4): a fixed set of map-wide emitters seeded from the brightest spectra; `opts` may set seed_snr,
+    width_max_nm, window_min_nm, window_max_nm and min_sep_nm (see basis4.OPTS4)."""
     if method not in METHODS:
         raise ValueError(f"method must be one of {METHODS}")
     phys = phys if isinstance(phys, dict) else physics.load(phys)
@@ -101,6 +103,14 @@ def fit_map(m, method="v3", phys=None, threads=None, verbose=False, local=True, 
                      best_start=[str(v) for v in fit.start], local_emitters=added,
                      local=[bool(v) for v in b.local])
         return Result("v3", list(m.ids), xs, ys, keeps, fit.params, fit.sse, b.psb.copy(), extra)
+    if method == "v4":
+        from . import basis4
+        b, fit, rep, keeps = basis4.fit(xs, ys, opts, phys, workers=threads, verbose=verbose)
+        extra = dict(center_lo=b.lo.tolist(), center_hi=b.hi.tolist(), width_min=b.wmin.tolist(), width_max=b.wmax.tolist(),
+                     history=rep["history"], n_seeds=len(rep["seeds"]), seed_snr=rep["options"]["seed_snr"],
+                     width_max_nm=rep["width_max_nm"], window_nm=rep["window_nm"], min_sep_nm=rep["min_sep_nm"],
+                     edge_fraction=rep["edge_fraction"], n_emitting=rep["n_emitting"], reference_centers=b.centers.tolist())
+        return Result("v4", list(m.ids), xs, ys, keeps, fit.params, fit.sse, b.psb.copy(), extra)
     if method == "v2":
         from . import pipeline
         b, rep = B.grow_basis(xs, ys, opts or None, workers=threads, verbose=verbose)

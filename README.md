@@ -94,10 +94,11 @@ Follow-up shortlist (shortlist.md):
 | `--method` | Model | Use it for |
 |---|---|---|
 | **`v3`** (default) | **Physical emitters.** Each one is a zero-phonon line (ZPL, pseudo-Voigt), optionally with a phonon sideband tied to it on the red side. A shoulder within one linewidth of an emitter can only become its sideband, never a new line. Lines of similar width must be at least 0.85 × their mean FWHM apart. A narrow line on a much broader component, such as GaSe band-edge emission, needs only 0.85 × its own FWHM. | Single-photon-emitter work: one emitter stays one line, so ν (0 = Lorentzian, 1 = Gaussian) and the linewidth keep their meaning. |
+| `v4` | **A fixed set of map-wide emitters.** The emitter set is seeded from the brightest spectra, brightest line first. Every emitter is allowed in every spectrum; strain and quantum confinement move its colour within its own window (±3–5 nm) and change its brightness, but never add or remove emitters. No separate broad-band class: emitter widths are capped, so a broad band is explained by the emitters it is made of. | Maps where the emitter set is fixed and only colour and brightness vary across the map. No phonon sidebands yet. |
 | `v2` | A data-driven basis of pseudo-Voigt lines, grown by held-out BIC (no anchors). | The best phenomenological fit. It can split one emitter into several unresolved lines. |
 | `legacy` | The original SpecSmartDecov model: 12 fixed anchors (611 … 724 nm), constant background. | Compatibility with old `dc` results. |
 
-All three use the same solver: bound-constrained Levenberg–Marquardt with an analytic Jacobian, in C++ with OpenMP, parallel over spectra.
+All four use the same solver: bound-constrained Levenberg–Marquardt with an analytic Jacobian, in C++ with OpenMP, parallel over spectra.
 
 **How V3 finds the emitters on a map:**
 1. Each spectrum is fitted on its own.
@@ -108,12 +109,22 @@ All three use the same solver: bound-constrained Levenberg–Marquardt with an a
 
 The number of components is therefore a result, not an input: 11 on the tent map, 12 on the 315-spectrum pillar-9 crop and 16 on the full 900-spectrum pillar-9 map. That includes broad band-edge components and patch-confined local lines.
 
+**How V4 finds the emitters on a map** (`fastdecov/basis4.py`):
+1. **Seeds:** spectra with peak SNR ≥ `--seed-snr` (default 300) are fitted on their own, and their lines are processed brightest first. A line within the window of an emitter that its spectrum has not used yet joins that emitter; otherwise it founds a new one, if it is at least the emitter spacing away from every existing emitter. Two candidates that (almost) never occur in the same spectrum and together span no more than one window are one emitter seen at both ends of its strain drift, and are merged. An emitter needs lines in at least 1 % of the seed spectra.
+2. **Spacing:** by default it is learned from the brightest 10 % of the map: the median spacing of neighbouring peaks and shoulders (maxima of −y″) within a band. Set it with `--min-sep`.
+3. **Windows:** each emitter's colour stays in [reference − h_lo, reference + h_hi]. The half-widths start from the colour range of its seed lines and stay between the physics strain half-range and 5 nm (`--window MIN,MAX`). A side opens by 1 nm, up to the maximum, while the fitted colour sits on that edge in more than 20 % of the spectra where the emitter is present. Windows are clipped at the midpoint between neighbouring references, so two emitters cannot swap identity.
+4. **Growth and necessity:** resolved residual peaks of the seed fits are tried as new emitters. An emitter is kept only if removing it worsens the per-spectrum BIC in at least half of the seed spectra where it carries ≥ 2 % of the line area.
+5. **Final fit:** every spectrum, with the same K emitters.
+
+`basis.json` records the seeds, the learned spacing, every drop, widening and growth step (`history`), and how often each emitter's colour sits on a window edge (`edge_fraction`). A high edge fraction means the window, or the emitter set, constrains the fit.
+
 ## Command line
 
 ```text
-fastdecov fit INPUT_DIR OUTPUT_DIR [--method v3|v2|legacy] [--grid auto|none|ROWSxCOLS[s]] [--physics FILE]
+fastdecov fit INPUT_DIR OUTPUT_DIR [--method v3|v4|v2|legacy] [--grid auto|none|ROWSxCOLS[s]] [--physics FILE]
               [--residual-limit FLOOR,K] [--snr-classes LOW,HIGH] [--no-residual-features] [--no-local-emitters]
               [--threads N] [--figures] [--png] [--name NAME] [--pattern '*.txt'] [--verbose]
+              [--seed-snr SNR] [--width-max NM] [--window MIN,MAX] [--min-sep NM]      # v4
 fastdecov report OUTPUT_DIR            # print the emitter report of a finished run
 fastdecov physics [--template FILE]    # show / copy the physics parameters
 fastdecov info                         # version and solver status
@@ -128,6 +139,10 @@ python -m fastdecov ...                # same as `fastdecov`
 | `--snr-classes` | `20,300` | Peak-SNR bounds of the substrate / weak / emitter spectrum classes. |
 | `--no-residual-features` | off | Skip the phonon-replica and separate-emitter diagnostic (`residual_features.*` and the `replica of #N` labels). The Voigt line-shape report still runs. |
 | `--no-local-emitters` | local pass on | V3: skip the local pass that adds emitters confined to a small connected patch of the map ([details](#local-emitters)). |
+| `--seed-snr` | `300` | V4: spectra with at least this peak SNR seed the emitter set (at least 20 spectra are used). |
+| `--width-max` | median seed FWHM | V4: largest emitter FWHM in nm. |
+| `--window` | strain half-range, 5 | V4: smallest and largest colour half-range of an emitter, in nm. |
+| `--min-sep` | learned | V4: smallest spacing between emitter reference centres, in nm. By default, the median within-band spacing of peaks and shoulders in the brightest 10 % of the spectra. |
 | `--threads` | all available | CPU threads. In a container with a CPU quota, set it (or `OMP_NUM_THREADS`) to the quota. |
 | `--figures`, `--png` | off | Write `dc/dc_<id>.tif` fit figures (data, fit, background, each ZPL, dashed sidebands, masked pixels, residual with the limit band); `--png` adds PNG copies. |
 
@@ -422,7 +437,7 @@ To reproduce 2.0.0 V3 results with this package, use `pair_rule="mean"`, `bg_flo
 
 | Version | Changes |
 |---|---|
-| **unreleased** | Runs on macOS (Homebrew GCC; libmvec only on Linux/glibc) and in Docker on any desktop (`amd64`/`arm64` image with one solver build per instruction-set level, checked at start-up); CPU count respects container quotas; `FASTDECOV_MARCH`/`FASTDECOV_CXXFLAGS`; prebuilt solvers are used without a compiler |
+| **unreleased** | `--method v4`: a fixed set of map-wide emitters seeded from the brightest spectra, per-emitter colour windows (±3–5 nm, widened while the colour sits on an edge), emitter spacing learned from the brightest spectra. Runs on macOS (Homebrew GCC; libmvec only on Linux/glibc) and in Docker on any desktop (`amd64`/`arm64` image with one solver build per instruction-set level, checked at start-up); CPU count respects container quotas; `FASTDECOV_MARCH`/`FASTDECOV_CXXFLAGS`; prebuilt solvers are used without a compiler |
 | **2.5.0** | The cosmic-ray rule masks only isolated spikes, so line tops are no longer clipped. The local pass is on by default (`--no-local-emitters` to skip), with noise-based and unexplained-peak candidates, patch extension, per-spectrum completion, a necessity check and no broad fillers. Fit audit (`unexplained_peaks_nm`). Figures draw and label only the components present. |
 | **2.4.0** | Voigt line-shape report (Lorentzian width, extra Gaussian, ν_intrinsic); follow-up shortlist (`shortlist.md`); `g2_order`; `follow_up_gratings_meV` |
 | **2.3.0** | Residual-feature diagnostic: optical-phonon replica vs separate emitter, tested against the map; `optical_phonon_max_meV`; `replica of #N` labels |
@@ -434,11 +449,11 @@ To reproduce 2.0.0 V3 results with this package, use `pair_rule="mean"`, `bg_flo
 
 | Path | Content |
 |---|---|
-| `fastdecov/` | The package. Main modules: `basis3.py` (V3 discovery), `lineshape.py`, `replicas.py`, `shortlist.py`, `grid.py`, `report.py`, `hw.py` (CPUs, compiler, flags), `runtime.py` (Docker entry point: solver-level choice), and `native/` (C++ solvers). |
+| `fastdecov/` | The package. Main modules: `basis3.py` (V3 discovery), `basis4.py` (V4 fixed emitter set), `lineshape.py`, `replicas.py`, `shortlist.py`, `grid.py`, `report.py`, `hw.py` (CPUs, compiler, flags), `runtime.py` (Docker entry point: solver-level choice), and `native/` (C++ solvers). |
 | `Dockerfile`, `docker/` | Image for any desktop with Docker, and the `fastdecov-docker` wrapper ([Run anywhere with Docker](#run-anywhere-with-docker)) |
 | `analysis.py` | V1 interface (`--input/--output/--device`) for the fixed 12-anchor legacy fit, CPU or GPU |
 | `examples/` | `fit_maps.sh` (the two reference maps) and `sdk_example.py` (ranking and shortlist) |
-| `tests/` | `pip install .[test] && pytest -q tests` (59 tests) |
+| `tests/` | `pip install .[test] && pytest -q tests` (80 tests) |
 | `manuscript/` | Methodology manuscript (`.md`/`.docx`/`.pdf`), figures, and the scripts that generate every number from verified metrics |
 | `results/` | Benchmark outputs of the three fastest ports (Go, Fortran, C++), the Python + C++ reference and the Octave/MATLAB baseline on Pillar 1 and Pillar 2. Includes `dc` tables, `.tif` figures (Git LFS: `git lfs pull`) and parity reports; see `results/README.md`. |
 
