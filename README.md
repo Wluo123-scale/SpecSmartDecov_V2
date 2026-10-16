@@ -45,7 +45,22 @@ docker run --rm --user "$(id -u):$(id -g)" -v "$PWD":/data fastdecov fit spectra
 docker/fastdecov-docker fit spectra out --figures    # the same, as if installed (macOS/Linux shells)
 ```
 
-The current directory is mounted at `/data`, so input and output paths must be inside it and given relative to it. On Windows (PowerShell), use `docker run --rm -v "${PWD}:/data" fastdecov fit spectra out`. `python -m fastdecov.runtime probe --all` (as `--entrypoint python3`) shows the detected hardware and checks every level. The CI workflow `.github/workflows/docker.yml` builds both architectures and checks their solver levels on every pull request (the test suite runs in the amd64 image), and pushes to `ghcr.io/<owner>/fastdecov` from `main` and `v*` tags. The package is private while the repository is.
+The current directory is mounted at `/data`, so input and output paths must be inside it and given relative to it. `python -m fastdecov.runtime probe --all` (as `--entrypoint python3`) shows the detected hardware and checks every level. The CI workflow `.github/workflows/docker.yml` builds both architectures and checks their solver levels on every pull request (the test suite runs in the amd64 image), and pushes to `ghcr.io/<owner>/fastdecov` from `main` and `v*` tags. The package is private while the repository is.
+
+#### Windows
+
+Not yet tested on Windows. Docker Desktop runs the same Linux image in a Linux VM, as on macOS, so it is expected to work. Without Docker, install fastdecov inside WSL2 (Ubuntu: `sudo apt install g++ python3-venv`, then the Linux steps above). Plain Windows Python is not supported.
+
+- **Linux containers mode** (Docker Desktop's default) is required; the image does not run as a Windows container. ARM laptops get the `arm64` image.
+- **Mounting the current folder** depends on the shell:
+  - PowerShell: `docker run --rm -v "${PWD}:/data" fastdecov fit spectra out`
+  - Command Prompt: `docker run --rm -v "%cd%:/data" fastdecov fit spectra out`
+  - Git Bash: prefix with `MSYS_NO_PATHCONV=1`, otherwise `/data` is rewritten into a Windows path.
+
+  Leave out `--user`; it is not needed on Windows. `docker/fastdecov-docker` is a shell script, so it works in WSL and Git Bash but not in PowerShell.
+- **Speed:** reading and writing a folder on a Windows drive (`C:\...`) from a container is much slower than on Linux or macOS, which matters with `--figures`. Keep large maps inside the WSL2 filesystem (`\\wsl$\Ubuntu\home\...`) and run from a WSL shell.
+- **CPUs:** the container gets the cores assigned to Docker Desktop (Settings → Resources), and fastdecov uses all of them.
+- **First check:** `docker run --rm -v "${PWD}:/data" fastdecov info` should list all three solvers as `ok` and print the chosen build on its first line.
 
 If `fastdecov` is not found, activate the environment it was installed in (for example `conda activate fastdecov`), or call it by its full path (`~/miniconda3/envs/fastdecov/bin/fastdecov`).
 
