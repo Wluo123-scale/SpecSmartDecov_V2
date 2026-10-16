@@ -129,12 +129,17 @@ def test_exec_outside_the_image_runs_plain_fastdecov(tmp_path, monkeypatch):
     assert seen == [["fastdecov", "info"]]
 
 
-def test_exec_sets_build_dir_and_threads(tmp_path, monkeypatch):
+@pytest.mark.parametrize("args, expected", [
+    (["fit", "in", "out"], ["fit", "in", "out", "--threads", "3"]),
+    (["fit", "in", "out", "--threads", "1"], ["fit", "in", "out", "--threads", "1"]),
+    (["fit", "in", "out", "--threads=1"], ["fit", "in", "out", "--threads=1"]),
+])
+def test_exec_sets_build_dir_and_threads(tmp_path, monkeypatch, args, expected):
     _levels(tmp_path, monkeypatch, "aarch64", {"asimd"}, {"armv8-a": True})
     monkeypatch.setattr(runtime.hw, "cpu_count", lambda: 3)
     seen = []
     monkeypatch.setattr(runtime.os, "execvp", lambda f, a: seen.append(a))
     monkeypatch.delenv("FASTDECOV_BUILD_DIR", raising=False); monkeypatch.delenv("OMP_NUM_THREADS", raising=False)
-    runtime.main(["exec", "--", "fit", "in", "out"])                    # exec sets both; monkeypatch restores them
-    assert seen == [["fastdecov", "fit", "in", "out", "--threads", "3"]]
+    runtime.main(["exec", "--", *args])                                # exec sets both; monkeypatch restores them
+    assert seen == [["fastdecov", *expected]]
     assert os.environ["FASTDECOV_BUILD_DIR"] == str(tmp_path / "armv8-a") and os.environ["OMP_NUM_THREADS"] == "3"

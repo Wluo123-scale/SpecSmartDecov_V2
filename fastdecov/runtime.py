@@ -147,7 +147,8 @@ def main(argv=None):
                   file=sys.stderr)
             return 2
         os.environ.update(FASTDECOV_BUILD_DIR=str(SOLVERS / chosen), OMP_NUM_THREADS=str(hwi["cpus"]))
-        if args[:1] == ["fit"] and "--threads" not in args:
+        has_threads = any(arg == "--threads" or arg.startswith("--threads=") for arg in args)
+        if args[:1] == ["fit"] and not has_threads:
             args += ["--threads", str(hwi["cpus"])]
         print(f"[fastdecov] {hwi['arch']}, solver build {chosen}, {hwi['cpus']} threads", file=sys.stderr, flush=True)
         os.execvp("fastdecov", ["fastdecov", *args])
