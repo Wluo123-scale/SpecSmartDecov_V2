@@ -59,7 +59,7 @@ def _window(s):
 
 
 def cmd_fit(a):
-    from . import __version__, api, grid, physics
+    from . import __version__, api, grid, hw, physics
     t0 = time.perf_counter()
     phys = physics.load(a.physics)
     m = api.load_map(a.input, a.pattern)
@@ -76,7 +76,7 @@ def cmd_fit(a):
             print(f"grid: not detected ({g['reason']}); no emitter maps. Give --grid ROWSxCOLS to draw them.", flush=True)
     else:
         g = None
-    threads = a.threads or len(os.sched_getaffinity(0))
+    threads = a.threads or hw.cpu_count()
     print(f"fastdecov {__version__}: {len(m)} spectra from {a.input}, method {a.method}, {threads} threads", flush=True)
     v4 = dict(seed_snr=a.seed_snr, width_max_nm=a.width_max, min_sep_nm=a.min_sep,
               window_min_nm=a.window[0] if a.window else None, window_max_nm=a.window[1] if a.window else None) \

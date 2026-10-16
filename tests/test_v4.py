@@ -143,7 +143,27 @@ def test_v4_widens_window_for_an_emitter_drifting_beyond_3nm():
     assert res.K == 3, res.extra["reference_centers"]
     half = (np.array(res.extra["center_hi"]) - np.array(res.extra["center_lo"])) / 2
     assert np.all(half <= 5.0 + 1e-9) and np.any(half > 3.0 + 1e-9), half
-    assert any(h["step"] == "widen" for h in res.extra["history"])
+    # the windows hold the drift, whether seeding (both drift ends merged) or widening opened them: no colour piles up
+    # on a window edge
+    assert np.all(np.array(res.extra["edge_fraction"]) <= basis4.OPTS4["widen_edge_frac"]), res.extra["edge_fraction"]
+
+
+def test_widen_opens_only_the_pinned_side_up_to_the_maximum(monkeypatch):
+    """A fit whose colour keeps sitting on the upper window edge (in 60 % of spectra): that side opens 1 nm per round
+    up to window_max_nm, the lower side stays, and every step is recorded."""
+    from types import SimpleNamespace
+
+    def fit_on_upper_edge(xm, ym, b, starts, o, workers=None, idx=None):
+        c = np.where(np.arange(10) < 6, b.hi[0], 700.0)                 # 6 of 10 spectra on the upper edge
+        tab = np.zeros((10, 1, 8)); tab[:, 0, 0] = c
+        return SimpleNamespace(share=np.ones((10, 1)), tab=tab)
+    monkeypatch.setattr(basis4.B3, "fit_set", fit_on_upper_edge)
+    W = basis4.Windows([700.0], [3.0], [3.0]); hist = []
+    o = {**basis4.OPTS4, "_workers": 1, "starts": (8.0,)}
+    fit0 = fit_on_upper_edge(None, None, W.basis(1.0, 8.0), None, o)
+    W2, _ = basis4._widen([None] * 10, [None] * 10, W, fit0, o, hist, 1.0, 8.0, 5.0)
+    assert np.allclose(W2.hhi, [5.0]) and np.allclose(W2.hlo, [3.0])
+    assert [h["step"] for h in hist] == ["widen", "widen"] and all("+" in h["windows"][0] for h in hist)
 
 
 def test_spacing_is_learned_from_brightest_spectra():

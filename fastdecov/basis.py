@@ -24,7 +24,7 @@ from concurrent.futures import ProcessPoolExecutor
 import numpy as np
 from scipy.ndimage import median_filter
 
-from . import model
+from . import hw, model
 
 DEFAULTS = dict(
     k_census_max=16,         # lines per spectrum in the census
@@ -177,7 +177,7 @@ def _census_task(args):
 
 
 def census(xs, ys, opts=None, workers=None):
-    workers = workers or len(os.sched_getaffinity(0))
+    workers = workers or hw.cpu_count()
     with ProcessPoolExecutor(workers, mp_context=multiprocessing.get_context("spawn")) as ex:
         return list(ex.map(_census_task, [(x, y, opts) for x, y in zip(xs, ys)], chunksize=4))
 

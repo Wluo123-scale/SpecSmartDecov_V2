@@ -30,9 +30,37 @@ fastdecov info              # version and C++ solver status
 
 **Requirements:**
 - Python ≥ 3.10, with NumPy, SciPy and Matplotlib.
-- g++ (or clang++) with OpenMP, on Linux with glibc.
+- A C++ compiler with OpenMP: g++ on Linux; on macOS, Homebrew GCC (`brew install gcc`, found as `g++-NN` automatically; Apple's clang has no OpenMP). On Windows, use WSL2 or Docker.
 
-The C++ solvers are compiled on first use; see [Requirements and performance](#requirements-and-performance).
+The C++ solvers are compiled on first use; see [Requirements and performance](#requirements-and-performance). Without a compiler, use Docker (below).
+
+### Run anywhere with Docker
+
+The image needs nothing on the host but Docker (Linux, macOS, Windows), and runs natively on Intel/AMD (`amd64`) and ARM (`arm64`, including Apple Silicon) machines. The solvers are compiled into it once per instruction-set level. At start-up the image picks the best level the CPU supports, checks it on a small synthetic map in a separate process (a build the CPU cannot run is rejected, not used), and uses as many threads as the container may (`--cpus` is respected).
+
+```bash
+docker build -t fastdecov .                          # or pull ghcr.io/arenasluo/fastdecov (built by CI from main)
+docker run --rm -v "$PWD":/data fastdecov info       # solver status
+docker run --rm --user "$(id -u):$(id -g)" -v "$PWD":/data fastdecov fit spectra out --figures --name my_map
+docker/fastdecov-docker fit spectra out --figures    # the same, as if installed (macOS/Linux shells)
+```
+
+The current directory is mounted at `/data`, so input and output paths must be inside it and given relative to it. `python -m fastdecov.runtime probe --all` (as `--entrypoint python3`) shows the detected hardware and checks every level. The CI workflow `.github/workflows/docker.yml` builds both architectures and checks their solver levels on every pull request (the test suite runs in the amd64 image), and pushes to `ghcr.io/<owner>/fastdecov` from `main` and `v*` tags. The package is private while the repository is.
+
+#### Windows
+
+Not yet tested on Windows. Docker Desktop runs the same Linux image in a Linux VM, as on macOS, so it is expected to work. Without Docker, install fastdecov inside WSL2 (Ubuntu: `sudo apt install g++ python3-venv`, then the Linux steps above). Plain Windows Python is not supported.
+
+- **Linux containers mode** (Docker Desktop's default) is required; the image does not run as a Windows container. ARM laptops get the `arm64` image.
+- **Mounting the current folder** depends on the shell:
+  - PowerShell: `docker run --rm -v "${PWD}:/data" fastdecov fit spectra out`
+  - Command Prompt: `docker run --rm -v "%cd%:/data" fastdecov fit spectra out`
+  - Git Bash: prefix with `MSYS_NO_PATHCONV=1`, otherwise `/data` is rewritten into a Windows path.
+
+  Leave out `--user`; it is not needed on Windows. `docker/fastdecov-docker` is a shell script, so it works in WSL and Git Bash but not in PowerShell.
+- **Speed:** reading and writing a folder on a Windows drive (`C:\...`) from a container is much slower than on Linux or macOS, which matters with `--figures`. Keep large maps inside the WSL2 filesystem (`\\wsl$\Ubuntu\home\...`) and run from a WSL shell.
+- **CPUs:** the container gets the cores assigned to Docker Desktop (Settings → Resources), and fastdecov uses all of them.
+- **First check:** `docker run --rm -v "${PWD}:/data" fastdecov info` should list all three solvers as `ok` and print the chosen build on its first line.
 
 If `fastdecov` is not found, activate the environment it was installed in (for example `conda activate fastdecov`), or call it by its full path (`~/miniconda3/envs/fastdecov/bin/fastdecov`).
 
@@ -383,7 +411,8 @@ The last column is the current release (2.5.0). Sideband recall is 0.58 (0.67 wi
 ## Requirements and performance
 
 - **Python and libraries:** Python ≥ 3.10, NumPy ≥ 1.24, SciPy ≥ 1.10, Matplotlib ≥ 3.7.
-- **C++:** g++ or clang++ with OpenMP, on Linux with glibc (the vectorised `exp` comes from libmvec). Solvers are compiled on first use into the package's `native/`, or into `$FASTDECOV_BUILD_DIR` or `~/.cache/fastdecov` when that is read-only.
+- **C++:** g++ or clang++ with OpenMP (`fastdecov/hw.py` picks `$CXX`, then on macOS the newest Homebrew `g++-NN`, then `g++`, `c++`, `clang++`). On Linux with glibc, `exp` is vectorised with libmvec; elsewhere it stays scalar (same results, slower). Solvers are compiled on first use, with `-march=native`, into the package's `native/`, or into `$FASTDECOV_BUILD_DIR` or `~/.cache/fastdecov` when that is read-only. `FASTDECOV_MARCH` (for example `x86-64-v3`) builds for other machines and `FASTDECOV_CXXFLAGS` adds flags. Without a compiler, existing libraries in the build directory are used as they are.
+- **Threads:** all CPUs the process may use: its affinity mask where the OS has one, capped by a container CPU quota (Docker `--cpus`). `--threads` overrides this.
 - **Optional GPU:** a CUDA path for the legacy method (`pip install .[gpu]`, see `analysis.py`).
 
 **Timing** on a 20-core desktop with 12 threads, including all reports and diagnostics, without figures:
@@ -408,7 +437,7 @@ To reproduce 2.0.0 V3 results with this package, use `pair_rule="mean"`, `bg_flo
 
 | Version | Changes |
 |---|---|
-| **unreleased** | `--method v4`: a fixed set of map-wide emitters seeded from the brightest spectra, per-emitter colour windows (±3–5 nm, widened while the colour sits on an edge), emitter spacing learned from the brightest spectra |
+| **unreleased** | `--method v4`: a fixed set of map-wide emitters seeded from the brightest spectra, per-emitter colour windows (±3–5 nm, widened while the colour sits on an edge), emitter spacing learned from the brightest spectra. Runs on macOS (Homebrew GCC; libmvec only on Linux/glibc) and in Docker on any desktop (`amd64`/`arm64` image with one solver build per instruction-set level, checked at start-up); CPU count respects container quotas; `FASTDECOV_MARCH`/`FASTDECOV_CXXFLAGS`; prebuilt solvers are used without a compiler |
 | **2.5.0** | The cosmic-ray rule masks only isolated spikes, so line tops are no longer clipped. The local pass is on by default (`--no-local-emitters` to skip), with noise-based and unexplained-peak candidates, patch extension, per-spectrum completion, a necessity check and no broad fillers. Fit audit (`unexplained_peaks_nm`). Figures draw and label only the components present. |
 | **2.4.0** | Voigt line-shape report (Lorentzian width, extra Gaussian, ν_intrinsic); follow-up shortlist (`shortlist.md`); `g2_order`; `follow_up_gratings_meV` |
 | **2.3.0** | Residual-feature diagnostic: optical-phonon replica vs separate emitter, tested against the map; `optical_phonon_max_meV`; `replica of #N` labels |
@@ -420,10 +449,11 @@ To reproduce 2.0.0 V3 results with this package, use `pair_rule="mean"`, `bg_flo
 
 | Path | Content |
 |---|---|
-| `fastdecov/` | The package. Main modules: `basis3.py` (V3 discovery), `basis4.py` (V4 fixed emitter set), `lineshape.py`, `replicas.py`, `shortlist.py`, `grid.py`, `report.py`, and `native/` (C++ solvers). |
+| `fastdecov/` | The package. Main modules: `basis3.py` (V3 discovery), `basis4.py` (V4 fixed emitter set), `lineshape.py`, `replicas.py`, `shortlist.py`, `grid.py`, `report.py`, `hw.py` (CPUs, compiler, flags), `runtime.py` (Docker entry point: solver-level choice), and `native/` (C++ solvers). |
+| `Dockerfile`, `docker/` | Image for any desktop with Docker, and the `fastdecov-docker` wrapper ([Run anywhere with Docker](#run-anywhere-with-docker)) |
 | `analysis.py` | V1 interface (`--input/--output/--device`) for the fixed 12-anchor legacy fit, CPU or GPU |
 | `examples/` | `fit_maps.sh` (the two reference maps) and `sdk_example.py` (ranking and shortlist) |
-| `tests/` | `pip install .[test] && pytest -q tests` (53 tests) |
+| `tests/` | `pip install .[test] && pytest -q tests` (80 tests) |
 | `manuscript/` | Methodology manuscript (`.md`/`.docx`/`.pdf`), figures, and the scripts that generate every number from verified metrics |
 | `results/` | Benchmark outputs of the three fastest ports (Go, Fortran, C++), the Python + C++ reference and the Octave/MATLAB baseline on Pillar 1 and Pillar 2. Includes `dc` tables, `.tif` figures (Git LFS: `git lfs pull`) and parity reports; see `results/README.md`. |
 

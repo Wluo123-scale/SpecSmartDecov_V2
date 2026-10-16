@@ -19,7 +19,7 @@ from pathlib import Path
 
 import numpy as np
 
-from . import basis as B, basis3, emitter, grid as G, model, physics, report
+from . import basis as B, basis3, emitter, grid as G, hw, model, physics, report
 
 METHODS = ("v3", "v4", "v2", "legacy")
 
@@ -87,7 +87,7 @@ def fit_map(m, method="v3", phys=None, threads=None, verbose=False, local=True, 
     if method not in METHODS:
         raise ValueError(f"method must be one of {METHODS}")
     phys = phys if isinstance(phys, dict) else physics.load(phys)
-    threads = threads or len(os.sched_getaffinity(0))
+    threads = threads or hw.cpu_count()
     xs, ys = m.xs, m.ys
     if method == "v3":
         o = dict(new_tol=phys["strain_shift_halfrange_nm"], **opts)
@@ -141,5 +141,5 @@ def save(res, out, name=None, phys=None, figures=False, formats=("tif",), grid=N
     phys = phys if isinstance(phys, dict) else physics.load(phys)
     if isinstance(grid, str) and grid == "auto":
         grid = G.detect(res.ids, res.xs, res.ys)
-    return report.save(res, out, name, phys, figures, formats, grid, threads or len(os.sched_getaffinity(0)), residual_limit,
+    return report.save(res, out, name, phys, figures, formats, grid, threads or hw.cpu_count(), residual_limit,
                        snr_classes, residual_features)

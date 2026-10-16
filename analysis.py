@@ -69,12 +69,12 @@ def main(argv=None):
 
     started = time.perf_counter()
     import numpy as np
-    from fastdecov import io, pipeline
+    from fastdecov import hw, io, pipeline
 
     gpus = [int(g) for g in args.gpus.split(",")] if args.gpus else None
     resolved, found = pipeline.resolve_device(args.device, gpus)
     starts = tuple(s if s == "mid" else float(s) for s in args.starts.split(","))
-    workers = args.workers or len(os.sched_getaffinity(0))
+    workers = args.workers or hw.cpu_count()
 
     engine = pipeline.resolve_engine(args.engine) if resolved == "cpu" else "cuda"
     ids, xs, ys = io.read_directory(args.input)
