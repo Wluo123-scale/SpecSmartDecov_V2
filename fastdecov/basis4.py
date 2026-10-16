@@ -132,7 +132,15 @@ def seed_emitters(cens, seeds, x_range, half, wmax, o):
             e = min(free, key=lambda e: abs(c - e["ref"]))
             e["members"].add(s); e["centers"].append(c); e["height"] += h
             continue
-        if all(abs(c - e["ref"]) >= sep for e in em):
+        # A candidate between one and two colour half-windows from a reference
+        # can be the far end of that same strained emitter.  Retain it
+        # provisionally so the co-occurrence/span merge below can decide that
+        # case; requiring it to already clear min_sep loses those endpoints when
+        # min_sep is larger than their distance from the initial (brightest)
+        # endpoint.  Beyond the mergeable 2*half span, preserve min_sep.
+        d = [abs(c - e["ref"]) for e in em]
+        provisional = any(half < z <= 2 * half for z in d)
+        if provisional or all(z >= sep for z in d):
             em.append(dict(ref=c, members={s}, centers=[c], height=h))
     span = lambda cs: (float(np.percentile(cs, 5)), float(np.percentile(cs, 95)))
     merged = True
@@ -268,8 +276,17 @@ def fit(xs, ys, opts=None, phys=None, workers=None, verbose=False):
     phys = phys or physics.load()
     o = {**B.DEFAULTS, **B.GROW_DEFAULTS, **B3.OPTS3, **OPTS4, **{k: v for k, v in (opts or {}).items() if v is not None}}
     o["_workers"] = workers
-    hmin = float(o["window_min_nm"] or phys["strain_shift_halfrange_nm"])
-    hmax = max(float(o["window_max_nm"]), hmin); o["window_min_nm"] = hmin
+    hmin = float(o["window_min_nm"] if o["window_min_nm"] is not None else phys["strain_shift_halfrange_nm"])
+    hmax = float(o["window_max_nm"])
+    if not np.isfinite(hmin) or hmin <= 0:
+        raise ValueError("v4 window_min_nm (or physics strain_shift_halfrange_nm) must be a positive finite number")
+    if not np.isfinite(hmax) or hmax <= 0 or hmax < hmin:
+        raise ValueError("v4 window_max_nm must be a positive finite number greater than or equal to window_min_nm")
+    if o["width_max_nm"] is not None and (not np.isfinite(o["width_max_nm"]) or o["width_max_nm"] <= 0):
+        raise ValueError("v4 width_max_nm must be a positive finite number")
+    if o["min_sep_nm"] is not None and (not np.isfinite(o["min_sep_nm"]) or o["min_sep_nm"] <= 0):
+        raise ValueError("v4 min_sep_nm must be a positive finite number")
+    o["window_min_nm"] = hmin
     step = float(np.median(np.diff(xs[0]))); wmin = max(0.8, 1.5 * step)
     cens = B.census(xs, ys, o, workers)
     keeps = [B.data_keep(y, c["sigma"]) for y, c in zip(ys, cens)]
@@ -280,11 +297,11 @@ def fit(xs, ys, opts=None, phys=None, workers=None, verbose=False):
         seeds = np.argsort(-snr)[:min(o["min_seeds"], len(xs))]
     seeds = np.sort(seeds)
     widths = [l["width"] for s in seeds for l in cens[s]["lines"] if l["share"] >= o["min_line_share"]]
-    wmax = float(o["width_max_nm"] or (np.median(widths) if widths else 10.0))
+    wmax = float(o["width_max_nm"] if o["width_max_nm"] is not None else (np.median(widths) if widths else 10.0))
     wmax = max(wmax, 2 * wmin)
     x_range = (min(float(np.min(x)) for x in xs), max(float(np.max(x)) for x in xs))
     sep_stats = None
-    if not o["min_sep_nm"]:
+    if o["min_sep_nm"] is None:
         learned, sep_stats = learn_min_sep(xs, ys, snr, wmax, o)
         o["min_sep_nm"] = learned if learned else 2 * hmax
         sep_stats["source"] = "learned" if learned else f"fallback 2 x window ({2 * hmax:g} nm): too few within-band pairs"

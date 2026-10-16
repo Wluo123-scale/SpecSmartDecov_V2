@@ -9,6 +9,7 @@
 """
 import argparse
 import json
+import math
 import os
 import platform
 import sys
@@ -36,6 +37,25 @@ def _limit(s):
         return floor, k
     except Exception:
         raise argparse.ArgumentTypeError(f"expected two comma-separated numbers such as 100,3, got {s!r}")
+
+
+def _positive(s):
+    """A positive, finite float for physical V4 bounds."""
+    try:
+        v = float(s)
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"expected a positive number, got {s!r}")
+    if not math.isfinite(v) or v <= 0:
+        raise argparse.ArgumentTypeError(f"expected a positive finite number, got {s!r}")
+    return v
+
+
+def _window(s):
+    """V4 colour half-window: MIN,MAX with 0 < MIN <= MAX."""
+    lo, hi = _limit(s)
+    if not math.isfinite(lo) or not math.isfinite(hi) or lo <= 0 or hi < lo:
+        raise argparse.ArgumentTypeError(f"window must be two positive finite numbers MIN,MAX with MIN <= MAX, got {s!r}")
+    return lo, hi
 
 
 def cmd_fit(a):
@@ -125,11 +145,11 @@ def main(argv=None):
                         "basis; legacy: original 12 fixed anchors")
     f.add_argument("--seed-snr", type=float, default=300.0,
                    help="v4: spectra with peak SNR >= this seed the emitter set (default 300)")
-    f.add_argument("--width-max", type=float, default=None, metavar="NM",
+    f.add_argument("--width-max", type=_positive, default=None, metavar="NM",
                    help="v4: largest emitter FWHM in nm (default: median census FWHM of the seed spectra)")
-    f.add_argument("--window", type=_limit, default=None, metavar="MIN,MAX",
+    f.add_argument("--window", type=_window, default=None, metavar="MIN,MAX",
                    help="v4: per-emitter colour half-range in nm, e.g. 3,5 (default: physics strain half-range .. 5)")
-    f.add_argument("--min-sep", type=float, default=None, metavar="NM",
+    f.add_argument("--min-sep", type=_positive, default=None, metavar="NM",
                    help="v4: smallest spacing between emitter reference centres in nm (default: learned from the "
                         "brightest spectra, the median within-band spacing of their peaks and shoulders)")
     f.add_argument("--grid", type=_grid, default="auto",

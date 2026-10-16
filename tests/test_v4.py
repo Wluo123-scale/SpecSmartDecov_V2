@@ -5,8 +5,9 @@ import subprocess
 import sys
 
 import numpy as np
+import pytest
 
-from fastdecov import api, basis4, emitter
+from fastdecov import api, basis4, cli, emitter
 
 TRUE = (650.0, 690.0, 720.0)
 
@@ -65,6 +66,17 @@ def test_seed_merge_one_emitter_seen_at_both_ends_of_its_drift():
     assert len(em) == 1 and em[0][1] == 20 and 689.0 < em[0][0] < 691.5
 
 
+def test_seed_retains_far_strain_endpoint_when_spacing_exceeds_drift_span():
+    """An endpoint outside the first candidate's half-window must remain a provisional candidate even when the learned
+    emitter spacing is larger than the endpoint separation; the merge pass then identifies the one non-cooccurring emitter."""
+    cens = [dict(lines=[dict(center=700.0, width=4.0, height=10.0, share=0.5)]) for _ in range(10)] + \
+           [dict(lines=[dict(center=709.0, width=4.0, height=1000.0, share=0.5)]) for _ in range(20)]
+    em = basis4.seed_emitters(cens, list(range(len(cens))), (600.0, 760.0), 5.0, 8.0,
+                              {**basis4.OPTS4, "min_sep_nm": 12.0, "window_min_nm": 3.0})
+    assert len(em) == 1 and em[0][1] == 30
+    assert 703.0 <= em[0][0] <= 706.0
+
+
 def test_seed_no_merge_when_lines_share_spectra():
     cens = [dict(lines=[dict(center=688.0, width=2.0, height=1000.0, share=0.5),
                         dict(center=692.0, width=2.0, height=800.0, share=0.5)]) for _ in range(10)]
@@ -77,6 +89,26 @@ def test_seed_assignment_ignores_edge_artefacts():
                         dict(center=700.0, width=4.0, height=10.0, share=0.5)])]
     em = basis4.seed_emitters(cens, [0], (600.0, 760.0), 3.0, 8.0, {**basis4.OPTS4, "min_sep_nm": 3.4})
     assert [round(e[0]) for e in em] == [700]
+
+
+@pytest.mark.parametrize("opts, message", [
+    ({"window_min_nm": 5.0, "window_max_nm": 3.0}, "window_max_nm"),
+    ({"window_min_nm": 0.0}, "window_min_nm"),
+    ({"width_max_nm": 0.0}, "width_max_nm"),
+    ({"min_sep_nm": -1.0}, "min_sep_nm"),
+])
+def test_v4_api_rejects_invalid_physical_bounds(opts, message):
+    with pytest.raises(ValueError, match=message):
+        basis4.fit([], [], opts=opts)
+
+
+@pytest.mark.parametrize("args", [
+    ["--window=5,3"], ["--window=0,5"], ["--width-max", "0"], ["--min-sep", "-1"],
+])
+def test_cli_rejects_invalid_v4_physical_bounds(args):
+    with pytest.raises(SystemExit) as err:
+        cli.main(["fit", "input", "output", "--method", "v4", *args])
+    assert err.value.code == 2
 
 
 def test_cli_v4(tmp_path):
