@@ -9,14 +9,14 @@ It is a safeguard, not access control. It does not prevent a person, crawler, or
 
 ## Covered material
 
-The allow-listed scope in `governance/canary-registry.json` covers maintained code, tests, examples, package metadata, and manuscript source:
+The allow-listed scope in `governance/canary-registry.json` covers maintained code, tests, examples, and package metadata:
 
 - root `README.md`, `analysis.py`, and `pyproject.toml`;
 - `fastdecov/` Python and C++ implementation files;
-- `tests/`, `examples/`, and source scripts under `manuscript/`;
+- `tests/` and `examples/`;
 - the canary validator, workflow, and this policy.
 
-The policy deliberately excludes `results/`, figures, PDFs, DOCX files, package physics JSON, metrics, determinism records, and other scientific inputs or generated outputs. Do not insert a marker into byte-sensitive measurement data, reproducibility artifacts, or rendered documents. `manuscript/manuscript.md` is covered because it is a tracked source document; `manuscript/build_paper.py` regenerates its marker after YAML front matter.
+The policy deliberately excludes `results/`, figures, PDFs, DOCX files, package physics JSON, metrics, determinism records, and other scientific inputs or generated outputs. Do not insert a marker into byte-sensitive measurement data, reproducibility artifacts, or rendered documents.
 
 ## Enforcement
 
@@ -28,4 +28,4 @@ CI runs the same full check on every push and pull request using local Git only 
 
 `tools/contamination_probe/` tests whether a model memorized the canary (and, opt-in, repository content) and keeps a dated log. Its README explains how to read a hit, a miss, and continuation recall. Record every date the content became reachable outside this repository in `tools/contamination_probe/exposures.md`.
 
-When rotating the marker, update `project_guid` and the marker line in each covered file (`manuscript/build_paper.py` reads the registry, so it needs no edit), and retain historic values in `legacy_markers`; do not remove them from the registry. Historical values are contamination probes, while current coverage must always use the canonical marker.
+When rotating the marker, update `project_guid` and the marker line in each covered file, and retain historic values in `legacy_markers`; do not remove them from the registry. Historical values are contamination probes, while current coverage must always use the canonical marker.
