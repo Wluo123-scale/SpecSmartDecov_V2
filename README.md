@@ -146,7 +146,7 @@ V2 finds slightly more of the true lines but also reports more false ones, and s
 V3 describes each map with about half the lines of the expert fit, without hand tuning. It trades some residual for physical meaning: on Pillar 2 it beats the expert fit on χ² and BIC; on Pillar 1, where dense clusters cannot be resolved at 150 g/mm, the expert fit has the lower residual. V2 always has the best residual because it is free to split emitters. The experimental anchor holds: on Pillar 2 the antibunched emitter (g²(0) = 0.43, arXiv:2305.03230) is found as one emitter at 695.3 nm with its sideband, and it is the only line ranked for g² follow-up.
 
 
-Every output behind the Pillar 1 and Pillar 2 numbers (fit tables and figures of every implementation, the original code under Octave, and `summary/metrics.json` with its checks) is in the private results repository [`SpecSmartDecov_V2_results`](https://github.com/arenasluo/SpecSmartDecov_V2_results), together with the methodology manuscript. `docs/figures/make_figures.py` redraws these figures from `docs/figures/benchmark_metrics.json` (the numbers it needs from that `metrics.json`) and `docs/figures/synthetic_validation.json`.
+Every output behind the Pillar 1 and Pillar 2 numbers (fit tables and figures of every implementation, the original code under Octave, and `summary/metrics.json` with its checks) is kept, together with the methodology manuscript, in a separate private repository (`SpecSmartDecov_V2_results`). `docs/figures/make_figures.py` redraws these figures from `docs/figures/benchmark_metrics.json` (the numbers it needs from that `metrics.json`) and `docs/figures/synthetic_validation.json`.
 
 ### Is it universal?
 
@@ -196,7 +196,7 @@ docker/fastdecov-docker fit spectra out --figures    # the same, as if installed
 
 The current directory is mounted at `/data`, so input and output paths must be inside it and given relative to it. `python -m fastdecov.runtime probe --all` (as `--entrypoint python3`) shows the detected hardware and checks every level.
 
-**Prebuilt image.** The CI workflow `.github/workflows/docker.yml` builds both architectures and checks their solver levels on every pull request (the test suite runs in the amd64 image). On every push to `main` it also publishes `ghcr.io/arenasluo/fastdecov:latest` and `:sha-<commit>`; a `v*` tag adds `:<version>`. The package is private while the repository is, so log in first with a GitHub token that has the `read:packages` scope:
+**Prebuilt image.** The CI workflow `.github/workflows/docker.yml` builds both architectures and checks their solver levels on every pull request (the test suite runs in the amd64 image). On every push to `main` it also publishes `ghcr.io/arenasluo/fastdecov:latest` and `:sha-<commit>`; a `v*` tag adds `:<version>`. The package is private for now, so log in first with a GitHub token that has the `read:packages` scope:
 
 ```bash
 echo "$GITHUB_TOKEN" | docker login ghcr.io -u <github-user> --password-stdin
@@ -619,7 +619,7 @@ To reproduce 2.0.0 V3 results with this package, use `pair_rule="mean"`, `bg_flo
 | `examples/` | `fit_maps.sh` (the two reference maps) and `sdk_example.py` (ranking and shortlist) |
 | `tests/` | `pip install .[test] && pytest -q tests` (80 tests) |
 | `docs/figures/` | The README figures and the scripts and data that draw them |
-| (separate repository) | Benchmark outputs (all ports, the reference, the Octave/MATLAB baseline) and the methodology manuscript: [`SpecSmartDecov_V2_results`](https://github.com/arenasluo/SpecSmartDecov_V2_results) (private) |
+| (separate repository) | Benchmark outputs (all ports, the reference, the Octave/MATLAB baseline) and the methodology manuscript, kept in the private repository `SpecSmartDecov_V2_results` |
 
 ## License
 

@@ -3,7 +3,7 @@
 
     python docs/figures/make_figures.py
 
-Inputs: docs/figures/benchmark_metrics.json (speed), docs/figures/synthetic_validation.json (held-out synthetic maps).
+Inputs: docs/figures/benchmark_metrics.json (speed) and docs/figures/synthetic_validation.json (held-out synthetic maps).
 Outputs: docs/figures/*_{light,dark}.png.
 """
 import json

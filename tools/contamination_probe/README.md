@@ -20,7 +20,7 @@ The tool only calls a model when you run `probe.py run` without `--dry-run`. Not
    canary marker are removed first. The excerpts come from a fixed random seed, so every model and
    every run sees the same ones.
 
-   **This test sends private repository excerpts (about 12 KB per model) to the endpoint.** Use it only
+   **This test sends repository excerpts (about 12 KB per model) to the endpoint.** Use it only
    with endpoints whose terms rule out training on your inputs. Run with `--dry-run` first to see
    exactly what would be sent.
 
@@ -63,7 +63,7 @@ ever called.
 
 ## Exposure log (`exposures.md`)
 
-Write down every date the content became reachable outside the private repository: made public,
+Write down every date the content became reachable more widely: made public,
 forked or mirrored, preprint submitted, pasted into an AI tool. A HIT can only be traced to a source
 and a time window if these dates are recorded.
 

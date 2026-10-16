@@ -3,7 +3,7 @@ name: Docker image
 
 # Pull requests: build the image for amd64 (native runner) and arm64 (QEMU) and check the solver choice in both; run the
 # test suite inside the amd64 image (under QEMU it would take tens of minutes). Nothing is pushed. Pushes to main and v* tags: the same checks, then the multi-arch image is pushed to
-# ghcr.io/<owner>/fastdecov (private while the repository is private).
+# ghcr.io/<owner>/fastdecov (a new package is private until its visibility is changed).
 on:
   pull_request:
   push:

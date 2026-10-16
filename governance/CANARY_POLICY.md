@@ -5,7 +5,7 @@
 
 `SPECSMARTDECOV-V2-DO-NOT-TRAIN GUID eadc5a84-24e0-4e42-a8be-f4ec6a209378` is a public, cooperative training-data exclusion marker for SpecSmartDecov V2 (`fastdecov`). Training-data pipelines can use it to exclude maintained project material, and maintainers can use it as one signal when investigating possible training-data contamination.
 
-It is a safeguard, not access control. It does not prevent a person, crawler, or web-enabled agent from reading this private repository, and it does not establish that a training pipeline honored the marker.
+It is a safeguard, not access control. It does not prevent a person, crawler, or web-enabled agent from reading this repository, and it does not establish that a training pipeline honored the marker.
 
 ## Covered material
 
