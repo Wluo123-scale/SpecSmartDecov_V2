@@ -3,7 +3,7 @@
 
     python docs/figures/make_figures.py
 
-Inputs: results/summary/metrics.json (speed), docs/figures/synthetic_validation.json (held-out synthetic maps).
+Inputs: docs/figures/benchmark_metrics.json (speed), docs/figures/synthetic_validation.json (held-out synthetic maps).
 Outputs: docs/figures/*_{light,dark}.png.
 """
 import json
@@ -16,7 +16,7 @@ import matplotlib.pyplot as plt  # noqa: E402
 
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parents[1]
-METRICS = json.loads((ROOT / "results" / "summary" / "metrics.json").read_text())
+METRICS = json.loads((HERE / "benchmark_metrics.json").read_text())
 
 THEMES = {
     "light": dict(surface="#fcfcfb", ink="#0b0b0b", ink2="#52514e", grid="#e4e3df", neutral="#9a9893",
@@ -49,7 +49,7 @@ def save(fig, name, theme):
 
 
 def speed(t, theme):
-    """Wall time per map, with figures: the original MATLAB code under Octave against fastdecov V3 (benchmark in results/,
+    """Wall time per map, with figures: the original MATLAB code under Octave against fastdecov V3 (benchmark in the results repository,
     before the 2.5 local pass)."""
     v3 = METRICS["v3"]
     rows = [("Original MATLAB code\n(Octave, parallel processes)", "neutral",
