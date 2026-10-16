@@ -1,0 +1,61 @@
+{
+ "source": "Synthetic-map validation of fastdecov, copied from the methodology manuscript's metrics.json (computed by its collect_metrics.py, all 284 consistency checks passing) when the manuscript was moved out of this repository. 12 held-out synthetic maps with known emitters, never used for tuning.",
+ "heldout_v2": {
+  "recall": 0.9314636752136752,
+  "precision": 0.7252554090789385,
+  "f1": 0.8116333876475864,
+  "splits": 2.0833333333333335,
+  "pass_rate": 0.9954765231207539,
+  "cluster_recall": 0.8361111111111111,
+  "nu_accuracy": 0.7738756613756613,
+  "psb_recall": 0.0,
+  "psb_false_rate": 0.0,
+  "n_maps": 12
+ },
+ "v3_2.1_rules": {
+  "recall": 0.8517170329670329,
+  "precision": 0.9139423076923077,
+  "f1": 0.8709693220722633,
+  "splits": 0.3333333333333333,
+  "pass_rate": 0.8647928435016347,
+  "cluster_recall": 0.49166666666666664,
+  "nu_accuracy": 0.825925925925926,
+  "psb_recall": 0.5833333333333334,
+  "psb_false_rate": 0.28829365079365077,
+  "n_maps": 12
+ },
+ "v3_2.2_rules": {
+  "recall": 0.8856913919413921,
+  "precision": 0.9243589743589743,
+  "f1": 0.8972492784992786,
+  "splits": 0.16666666666666666,
+  "pass_rate": 0.9309658404782031,
+  "cluster_recall": 0.5583333333333333,
+  "nu_accuracy": 0.8544973544973544,
+  "psb_recall": 0.6666666666666666,
+  "psb_false_rate": 0.3327380952380952,
+  "n_maps": 12
+ },
+ "v3_2.5": {
+  "recall": 0.9049755799755802,
+  "precision": 0.9344449531949532,
+  "f1": 0.9128030670465722,
+  "splits": 0.16666666666666666,
+  "pass_rate": 0.9489144605902847,
+  "cluster_recall": 0.6138888888888888,
+  "nu_accuracy": 0.8628637566137566,
+  "psb_recall": 0.5833333333333334,
+  "psb_false_rate": 0.30502645502645503,
+  "n_maps": 12
+ },
+ "voigt_line_shape": {
+  "n_lines": 59,
+  "r_lorentz": 0.9430268618112774,
+  "r_extra_gauss": 0.9678055494669143,
+  "r_nu_intrinsic": 0.9464120482535976,
+  "err_lorentz_nm": 0.04948725388871855,
+  "err_extra_gauss_nm": 0.05137783083102665,
+  "class_acc_intrinsic": 0.9322033898305084,
+  "class_acc_fit_nu": 0.864406779661017
+ }
+}
