@@ -1,0 +1,1080 @@
+{
+ "source": "Subset of results/summary/metrics.json (benchmark of fastdecov before release 2.5: timings and fit quality on Pillar 1 and 2), kept here when results/ moved to the private repository arenasluo/SpecSmartDecov_V2_results (results/summary/metrics.json there, 210 of 210 consistency checks passing).",
+ "checks_passed": 210,
+ "checks_total": 210,
+ "octave_p1": {
+  "total_s": 324.56409966401407,
+  "fit_only_s": 289.2538168420142,
+  "failed": 8,
+  "processes": 20,
+  "failure_reasons": {
+   "SVD of Inf/NaN": 4,
+   "inverted bounds": 4
+  }
+ },
+ "octave_p2": {
+  "total_s": 99.7852931022644,
+  "fit_s": 97.86086130142212,
+  "failed": 2,
+  "processes": 16,
+  "failure_reasons": {
+   "inverted bounds": 2
+  }
+ },
+ "v1": {
+  "times": {
+   "cpp": {
+    "315/t1": 14.02118899000925,
+    "315/t1/figures": 18.40208109500236,
+    "315/t20": 1.575142331974348,
+    "315/t20/figures": 2.189339298987761,
+    "900/t20": 6.281241400982253,
+    "900/t20/figures": 8.118433417985216
+   },
+   "rust": {
+    "315/t1": 21.17751205500099,
+    "315/t1/figures": 24.77142192001338,
+    "315/t20": 1.9903377319860738,
+    "315/t20/figures": 2.2739530529943295,
+    "900/t20": 7.832416991994251,
+    "900/t20/figures": 9.277899317006813
+   },
+   "fortran": {
+    "315/t1": 17.637108671013266,
+    "315/t1/figures": 21.426579230988864,
+    "315/t20": 1.7611265220039058,
+    "315/t20/figures": 2.0254745749989524,
+    "900/t20": 6.6643776500131935,
+    "900/t20/figures": 7.553192110004602
+   },
+   "julia": {
+    "315/t1": 14.552861072006635,
+    "315/t1/figures": 17.91185586398933,
+    "315/t20": 1.932042286003707,
+    "315/t20/figures": 2.2357471409777645,
+    "900/t20": 5.1666355049819686,
+    "900/t20/figures": 6.0463757300167345
+   },
+   "java": {
+    "315/t1": 22.87584639401757,
+    "315/t1/figures": 27.66037765800138,
+    "315/t20": 3.877438228984829,
+    "315/t20/figures": 4.483180253999308,
+    "900/t20": 11.221974145999411,
+    "900/t20/figures": 13.65450667499681
+   },
+   "java_vector": {
+    "315/t1": 13.311097745987354,
+    "315/t1/figures": 17.556935870990856,
+    "315/t20": 2.48605393798789,
+    "315/t20/figures": 2.9465320960152894,
+    "900/t20": 5.25045032199705,
+    "900/t20/figures": 6.717529623012524
+   },
+   "go": {
+    "315/t1": 21.330040661996463,
+    "315/t1/figures": 23.62045019501238,
+    "315/t20": 2.304692959995009,
+    "315/t20/figures": 2.540988009015564,
+    "900/t20": 8.362514804000966,
+    "900/t20/figures": 9.43979480699636
+   },
+   "python_numba": {
+    "315/t1": 40.63516249699751,
+    "315/t1/figures": 43.64598183700582,
+    "315/t20": 4.970031076984014,
+    "315/t20/figures": 7.625058657984482,
+    "900/t20": 17.033612328988966,
+    "900/t20/figures": 20.745445166015998
+   },
+   "python_numpy": {
+    "315/t1": 33.53007959801471,
+    "315/t1/figures": 106.22214557600091,
+    "315/t20": 4.677985832997365,
+    "315/t20/figures": 13.546859198017046,
+    "900/t20": 15.988498324993998,
+    "900/t20/figures": 39.61791300700861
+   },
+   "cuda": {
+    "315/t20": 2.3095020759792533,
+    "315/t20/figures": 11.261921177996555,
+    "900/t20": 4.388577234989498,
+    "900/t20/figures": 27.167863581998972
+   },
+   "octave_legacy": {
+    "315/t20": 289.2538168420142,
+    "315/t20/figures": 324.56409966401407
+   },
+   "python_numpy_raster": {
+    "315/t1": 33.48774726301781,
+    "315/t1/figures": 39.68369298899779,
+    "315/t20": 4.645839437987888,
+    "315/t20/figures": 6.375698176998412,
+    "900/t20": 16.390561153006274,
+    "900/t20/figures": 19.425396402017213
+   },
+   "cuda_raster": {
+    "315/t1": 2.138852019008482,
+    "315/t1/figures": 8.161590497009456,
+    "315/t20": 2.428291429008823,
+    "315/t20/figures": 5.1242859970079735,
+    "900/t20": 4.452949072001502,
+    "900/t20/figures": 8.26199172998895
+   }
+  },
+  "octave_dc_files": 307,
+  "octave_failed": 8,
+  "cpp_sse_ratio_vs_matlab": 0.762,
+  "cpp_better_than_matlab_pct": 89
+ },
+ "v2": {
+  "reference": {
+   "P1": {
+    "total_s": 73.56803956300064,
+    "fit_s": 71.95097298799737,
+    "runs": 3,
+    "K": 17,
+    "n_psb": null,
+    "threads": 16
+   },
+   "P2": {
+    "total_s": 17.407598224002868,
+    "fit_s": 16.170965536999574,
+    "runs": 3,
+    "K": 10,
+    "n_psb": null,
+    "threads": 16
+   }
+  },
+  "cpp": {
+   "P1": {
+    "total_s": 51.1893,
+    "fit_s": 50.75491,
+    "runs": 3,
+    "K": 17,
+    "n_psb": null,
+    "threads": 16,
+    "text_files": 318,
+    "text_files_differing": 0,
+    "figures": 315,
+    "figures_differing": 0
+   },
+   "P2": {
+    "total_s": 8.015736,
+    "fit_s": 7.797977,
+    "runs": 3,
+    "K": 10,
+    "n_psb": null,
+    "threads": 16,
+    "text_files": 124,
+    "text_files_differing": 0,
+    "figures": 121,
+    "figures_differing": 0
+   }
+  },
+  "rust": {
+   "P1": {
+    "total_s": 57.427921737,
+    "fit_s": 57.045711903,
+    "runs": 3,
+    "K": 17,
+    "n_psb": null,
+    "threads": 16,
+    "text_files": 318,
+    "text_files_differing": 0,
+    "figures": 315,
+    "figures_differing": 0
+   },
+   "P2": {
+    "total_s": 8.932006831,
+    "fit_s": 8.761821078,
+    "runs": 3,
+    "K": 10,
+    "n_psb": null,
+    "threads": 16,
+    "text_files": 124,
+    "text_files_differing": 0,
+    "figures": 121,
+    "figures_differing": 0
+   }
+  },
+  "fortran": {
+   "P1": {
+    "total_s": 59.88275,
+    "fit_s": 59.305715,
+    "runs": 3,
+    "K": 17,
+    "n_psb": null,
+    "threads": 16,
+    "text_files": 318,
+    "text_files_differing": 0,
+    "figures": 315,
+    "figures_differing": 0
+   },
+   "P2": {
+    "total_s": 9.872359,
+    "fit_s": 9.603611,
+    "runs": 3,
+    "K": 10,
+    "n_psb": null,
+    "threads": 16,
+    "text_files": 124,
+    "text_files_differing": 0,
+    "figures": 121,
+    "figures_differing": 0
+   }
+  },
+  "julia": {
+   "P1": {
+    "total_s": 51.080588,
+    "fit_s": 50.577694,
+    "runs": 3,
+    "K": 17,
+    "n_psb": null,
+    "threads": 16,
+    "text_files": 318,
+    "text_files_differing": 0,
+    "figures": 315,
+    "figures_differing": 0
+   },
+   "P2": {
+    "total_s": 8.12021,
+    "fit_s": 7.801743,
+    "runs": 3,
+    "K": 10,
+    "n_psb": null,
+    "threads": 16,
+    "text_files": 124,
+    "text_files_differing": 0,
+    "figures": 121,
+    "figures_differing": 0
+   }
+  },
+  "java": {
+   "P1": {
+    "total_s": 56.202515,
+    "fit_s": 55.185836,
+    "runs": 3,
+    "K": 17,
+    "n_psb": null,
+    "threads": 16,
+    "text_files": 318,
+    "text_files_differing": 0,
+    "figures": 315,
+    "figures_differing": 0
+   },
+   "P2": {
+    "total_s": 9.767363,
+    "fit_s": 9.004242,
+    "runs": 3,
+    "K": 10,
+    "n_psb": null,
+    "threads": 16,
+    "text_files": 124,
+    "text_files_differing": 0,
+    "figures": 121,
+    "figures_differing": 0
+   }
+  },
+  "java_vector": {
+   "P1": {
+    "total_s": 46.591774,
+    "fit_s": 45.613607,
+    "runs": 3,
+    "K": 17,
+    "n_psb": null,
+    "threads": 16,
+    "text_files": 318,
+    "text_files_differing": 0,
+    "figures": 315,
+    "figures_differing": 0
+   },
+   "P2": {
+    "total_s": 8.541154,
+    "fit_s": 7.915134,
+    "runs": 3,
+    "K": 10,
+    "n_psb": null,
+    "threads": 16,
+    "text_files": 124,
+    "text_files_differing": 0,
+    "figures": 121,
+    "figures_differing": 0
+   }
+  },
+  "go": {
+   "P1": {
+    "total_s": 42.511505,
+    "fit_s": 42.220111,
+    "runs": 3,
+    "K": 17,
+    "n_psb": null,
+    "threads": 16,
+    "text_files": 318,
+    "text_files_differing": 0,
+    "figures": 315,
+    "figures_differing": 0
+   },
+   "P2": {
+    "total_s": 6.262654,
+    "fit_s": 6.106763,
+    "runs": 3,
+    "K": 10,
+    "n_psb": null,
+    "threads": 16,
+    "text_files": 124,
+    "text_files_differing": 0,
+    "figures": 121,
+    "figures_differing": 0
+   }
+  },
+  "python_numba": {
+   "P1": {
+    "total_s": 105.34093303700138,
+    "fit_s": 102.92869180900016,
+    "runs": 3,
+    "K": 17,
+    "n_psb": null,
+    "threads": 16,
+    "text_files": 318,
+    "text_files_differing": 0,
+    "figures": 315,
+    "figures_differing": 0
+   },
+   "P2": {
+    "total_s": 19.9476422000007,
+    "fit_s": 17.841826706000575,
+    "runs": 3,
+    "K": 10,
+    "n_psb": null,
+    "threads": 16,
+    "text_files": 124,
+    "text_files_differing": 0,
+    "figures": 121,
+    "figures_differing": 0
+   }
+  },
+  "python_numpy": {
+   "P1": {
+    "total_s": 7645.264691380002,
+    "fit_s": 7643.412759942999,
+    "runs": 1,
+    "K": 17,
+    "n_psb": null,
+    "threads": 16,
+    "text_files": 318,
+    "text_files_differing": 0,
+    "figures": 315,
+    "figures_differing": 0
+   },
+   "P2": {
+    "total_s": 1420.6092575080002,
+    "fit_s": 1419.2225557720012,
+    "runs": 1,
+    "K": 10,
+    "n_psb": null,
+    "threads": 16,
+    "text_files": 124,
+    "text_files_differing": 0,
+    "figures": 121,
+    "figures_differing": 0
+   }
+  },
+  "cuda": {
+   "P1": {
+    "total_s": 49.192911789999926,
+    "fit_s": 46.4706045990024,
+    "runs": 3,
+    "K": 17,
+    "n_psb": null,
+    "threads": 16,
+    "text_files": 318,
+    "text_files_differing": 0,
+    "figures": 315,
+    "figures_differing": 0
+   },
+   "P2": {
+    "total_s": 16.056214205997094,
+    "fit_s": 13.792561980000755,
+    "runs": 3,
+    "K": 10,
+    "n_psb": null,
+    "threads": 16,
+    "text_files": 124,
+    "text_files_differing": 0,
+    "figures": 121,
+    "figures_differing": 0
+   }
+  }
+ },
+ "v3": {
+  "reference": {
+   "P1": {
+    "total_s": 7.5276415679982165,
+    "fit_s": 5.728028128003643,
+    "runs": 3,
+    "K": 5,
+    "n_psb": 2,
+    "threads": 14
+   },
+   "P2": {
+    "total_s": 4.118943563000357,
+    "fit_s": 2.5037131479984964,
+    "runs": 3,
+    "K": 4,
+    "n_psb": 1,
+    "threads": 14
+   }
+  },
+  "cpp": {
+   "P1": {
+    "total_s": 3.075797,
+    "fit_s": 2.586768,
+    "runs": 3,
+    "K": 5,
+    "n_psb": 2,
+    "threads": 14,
+    "text_files": 319,
+    "text_files_differing": 0,
+    "figures": 315,
+    "figures_differing": 0
+   },
+   "P2": {
+    "total_s": 1.209105,
+    "fit_s": 0.980469,
+    "runs": 3,
+    "K": 4,
+    "n_psb": 1,
+    "threads": 14,
+    "text_files": 125,
+    "text_files_differing": 0,
+    "figures": 121,
+    "figures_differing": 0
+   }
+  },
+  "rust": {
+   "P1": {
+    "total_s": 3.177059924,
+    "fit_s": 2.7570673340000003,
+    "runs": 3,
+    "K": 5,
+    "n_psb": 2,
+    "threads": 14,
+    "text_files": 319,
+    "text_files_differing": 0,
+    "figures": 315,
+    "figures_differing": 0
+   },
+   "P2": {
+    "total_s": 1.410987598,
+    "fit_s": 1.205520865,
+    "runs": 3,
+    "K": 4,
+    "n_psb": 1,
+    "threads": 14,
+    "text_files": 125,
+    "text_files_differing": 0,
+    "figures": 121,
+    "figures_differing": 0
+   }
+  },
+  "fortran": {
+   "P1": {
+    "total_s": 3.067973,
+    "fit_s": 2.345133,
+    "runs": 3,
+    "K": 5,
+    "n_psb": 2,
+    "threads": 14,
+    "text_files": 319,
+    "text_files_differing": 0,
+    "figures": 315,
+    "figures_differing": 0
+   },
+   "P2": {
+    "total_s": 1.206881,
+    "fit_s": 0.96584,
+    "runs": 3,
+    "K": 4,
+    "n_psb": 1,
+    "threads": 14,
+    "text_files": 125,
+    "text_files_differing": 0,
+    "figures": 121,
+    "figures_differing": 0
+   }
+  },
+  "julia": {
+   "P1": {
+    "total_s": 2.860114,
+    "fit_s": 2.40017,
+    "runs": 3,
+    "K": 5,
+    "n_psb": 2,
+    "threads": 14,
+    "text_files": 319,
+    "text_files_differing": 0,
+    "figures": 315,
+    "figures_differing": 0
+   },
+   "P2": {
+    "total_s": 1.699789,
+    "fit_s": 1.360886,
+    "runs": 3,
+    "K": 4,
+    "n_psb": 1,
+    "threads": 14,
+    "text_files": 125,
+    "text_files_differing": 0,
+    "figures": 121,
+    "figures_differing": 0
+   }
+  },
+  "java": {
+   "P1": {
+    "total_s": 4.376044,
+    "fit_s": 3.374611,
+    "runs": 3,
+    "K": 5,
+    "n_psb": 2,
+    "threads": 14,
+    "text_files": 319,
+    "text_files_differing": 0,
+    "figures": 315,
+    "figures_differing": 0
+   },
+   "P2": {
+    "total_s": 2.682815,
+    "fit_s": 1.974167,
+    "runs": 3,
+    "K": 4,
+    "n_psb": 1,
+    "threads": 14,
+    "text_files": 125,
+    "text_files_differing": 0,
+    "figures": 121,
+    "figures_differing": 0
+   }
+  },
+  "java_vector": {
+   "P1": {
+    "total_s": 4.844617,
+    "fit_s": 3.951634,
+    "runs": 3,
+    "K": 5,
+    "n_psb": 2,
+    "threads": 14,
+    "text_files": 319,
+    "text_files_differing": 0,
+    "figures": 315,
+    "figures_differing": 0
+   },
+   "P2": {
+    "total_s": 3.267021,
+    "fit_s": 2.492673,
+    "runs": 3,
+    "K": 4,
+    "n_psb": 1,
+    "threads": 14,
+    "text_files": 125,
+    "text_files_differing": 0,
+    "figures": 121,
+    "figures_differing": 0
+   }
+  },
+  "go": {
+   "P1": {
+    "total_s": 2.16986,
+    "fit_s": 1.883838,
+    "runs": 3,
+    "K": 5,
+    "n_psb": 2,
+    "threads": 14,
+    "text_files": 319,
+    "text_files_differing": 0,
+    "figures": 315,
+    "figures_differing": 0
+   },
+   "P2": {
+    "total_s": 0.96767,
+    "fit_s": 0.824789,
+    "runs": 3,
+    "K": 4,
+    "n_psb": 1,
+    "threads": 14,
+    "text_files": 125,
+    "text_files_differing": 0,
+    "figures": 121,
+    "figures_differing": 0
+   }
+  },
+  "python_numba": {
+   "P1": {
+    "total_s": 8.53155540899752,
+    "fit_s": 5.9905884389954736,
+    "runs": 3,
+    "K": 5,
+    "n_psb": 2,
+    "threads": 14,
+    "text_files": 319,
+    "text_files_differing": 0,
+    "figures": 315,
+    "figures_differing": 0
+   },
+   "P2": {
+    "total_s": 5.45172568000271,
+    "fit_s": 3.4395825160027016,
+    "runs": 3,
+    "K": 4,
+    "n_psb": 1,
+    "threads": 14,
+    "text_files": 125,
+    "text_files_differing": 0,
+    "figures": 121,
+    "figures_differing": 0
+   }
+  },
+  "python_numpy": {
+   "P1": {
+    "total_s": 208.7081704480006,
+    "fit_s": 207.09853089099488,
+    "runs": 1,
+    "K": 5,
+    "n_psb": 2,
+    "threads": 14,
+    "text_files": 319,
+    "text_files_differing": 0,
+    "figures": 315,
+    "figures_differing": 0
+   },
+   "P2": {
+    "total_s": 139.45939217699924,
+    "fit_s": 138.15222679600265,
+    "runs": 1,
+    "K": 4,
+    "n_psb": 1,
+    "threads": 14,
+    "text_files": 125,
+    "text_files_differing": 0,
+    "figures": 121,
+    "figures_differing": 0
+   }
+  },
+  "cuda": {
+   "P1": {
+    "total_s": 8.188660266001534,
+    "fit_s": 5.387671092001256,
+    "runs": 3,
+    "K": 5,
+    "n_psb": 2,
+    "threads": 14,
+    "text_files": 319,
+    "text_files_differing": 0,
+    "figures": 315,
+    "figures_differing": 0
+   },
+   "P2": {
+    "total_s": 6.725313413000549,
+    "fit_s": 4.362198767994414,
+    "runs": 3,
+    "K": 4,
+    "n_psb": 1,
+    "threads": 14,
+    "text_files": 125,
+    "text_files_differing": 0,
+    "figures": 121,
+    "figures_differing": 0
+   }
+  }
+ },
+ "v2_quality": {
+  "P1": {
+   "cpp": {
+    "K": "17",
+    "r2": 0.9998811844155222,
+    "pass_rate": 1.0,
+    "rchi2": 2.5338060330597845,
+    "bic": 2064.1497847777387
+   },
+   "cuda": {
+    "K": "17",
+    "r2": 0.9998811844155222,
+    "pass_rate": 1.0,
+    "rchi2": 2.5338060330597845,
+    "bic": 2064.1497847777387
+   },
+   "fortran": {
+    "K": "17",
+    "r2": 0.9998811844155222,
+    "pass_rate": 1.0,
+    "rchi2": 2.5338060330597845,
+    "bic": 2064.1497847777387
+   },
+   "go": {
+    "K": "17",
+    "r2": 0.9998811844155222,
+    "pass_rate": 1.0,
+    "rchi2": 2.5338060330597845,
+    "bic": 2064.1497847777387
+   },
+   "java": {
+    "K": "17",
+    "r2": 0.9998811844155222,
+    "pass_rate": 1.0,
+    "rchi2": 2.5338060330597845,
+    "bic": 2064.1497847777387
+   },
+   "java_vector": {
+    "K": "17",
+    "r2": 0.9998811844155222,
+    "pass_rate": 1.0,
+    "rchi2": 2.5338060330597845,
+    "bic": 2064.1497847777387
+   },
+   "julia": {
+    "K": "17",
+    "r2": 0.9998811844155222,
+    "pass_rate": 1.0,
+    "rchi2": 2.5338060330597845,
+    "bic": 2064.1497847777387
+   },
+   "python_numba": {
+    "K": "17",
+    "r2": 0.9998811844155222,
+    "pass_rate": 1.0,
+    "rchi2": 2.5338060330597845,
+    "bic": 2064.1497847777387
+   },
+   "python_numpy": {
+    "K": "17",
+    "r2": 0.9998811844155222,
+    "pass_rate": 1.0,
+    "rchi2": 2.5338060330597845,
+    "bic": 2064.1497847777387
+   },
+   "reference": {
+    "K": "17",
+    "r2": 0.9998811844155222,
+    "pass_rate": 1.0,
+    "rchi2": 2.5338060330597845,
+    "bic": 2064.1497847777387
+   },
+   "rust": {
+    "K": "17",
+    "r2": 0.9998811844155222,
+    "pass_rate": 1.0,
+    "rchi2": 2.5338060330597845,
+    "bic": 2064.1497847777387
+   },
+   "octave_legacy": {
+    "K": "12",
+    "r2": -20.742301036542166,
+    "pass_rate": 0.0,
+    "rchi2": 544222.4790605512,
+    "bic": 6217.137171893344
+   },
+   "expert (MATLAB dc)": {
+    "K": "12",
+    "r2": 0.9981775968026868,
+    "pass_rate": 0.8666666666666667,
+    "rchi2": 44.26276863758171,
+    "bic": 2959.107767997317
+   }
+  },
+  "P2": {
+   "cpp": {
+    "K": "10",
+    "r2": 0.999508226747311,
+    "pass_rate": 0.9669421487603306,
+    "rchi2": 1.9517859568873484,
+    "bic": 3086.6410007097543
+   },
+   "cuda": {
+    "K": "10",
+    "r2": 0.999508226747311,
+    "pass_rate": 0.9669421487603306,
+    "rchi2": 1.9517859568873484,
+    "bic": 3086.6410007097543
+   },
+   "fortran": {
+    "K": "10",
+    "r2": 0.999508226747311,
+    "pass_rate": 0.9669421487603306,
+    "rchi2": 1.9517859568873484,
+    "bic": 3086.6410007097543
+   },
+   "go": {
+    "K": "10",
+    "r2": 0.999508226747311,
+    "pass_rate": 0.9669421487603306,
+    "rchi2": 1.9517859568873484,
+    "bic": 3086.6410007097543
+   },
+   "java": {
+    "K": "10",
+    "r2": 0.999508226747311,
+    "pass_rate": 0.9669421487603306,
+    "rchi2": 1.9517859568873484,
+    "bic": 3086.6410007097543
+   },
+   "java_vector": {
+    "K": "10",
+    "r2": 0.999508226747311,
+    "pass_rate": 0.9669421487603306,
+    "rchi2": 1.9517859568873484,
+    "bic": 3086.6410007097543
+   },
+   "julia": {
+    "K": "10",
+    "r2": 0.999508226747311,
+    "pass_rate": 0.9669421487603306,
+    "rchi2": 1.9517859568873484,
+    "bic": 3086.6410007097543
+   },
+   "python_numba": {
+    "K": "10",
+    "r2": 0.999508226747311,
+    "pass_rate": 0.9669421487603306,
+    "rchi2": 1.9517859568873484,
+    "bic": 3086.6410007097543
+   },
+   "python_numpy": {
+    "K": "10",
+    "r2": 0.999508226747311,
+    "pass_rate": 0.9669421487603306,
+    "rchi2": 1.9517859568873484,
+    "bic": 3086.6410007097543
+   },
+   "reference": {
+    "K": "10",
+    "r2": 0.999508226747311,
+    "pass_rate": 0.9669421487603306,
+    "rchi2": 1.9517859568873484,
+    "bic": 3086.6410007097543
+   },
+   "rust": {
+    "K": "10",
+    "r2": 0.999508226747311,
+    "pass_rate": 0.9669421487603306,
+    "rchi2": 1.9517859568873484,
+    "bic": 3086.6410007097543
+   },
+   "octave_legacy": {
+    "K": "10",
+    "r2": -7.092333366864926,
+    "pass_rate": 0.0,
+    "rchi2": 31115.34664026871,
+    "bic": 9009.39831477659
+   },
+   "expert (MATLAB dc)": {
+    "K": "10",
+    "r2": 0.9961695393430111,
+    "pass_rate": 0.8099173553719008,
+    "rchi2": 6.391268199547275,
+    "bic": 4025.504499598781
+   }
+  }
+ },
+ "v3_quality": {
+  "P1": {
+   "V3 cpp": {
+    "K": "5 (+2 PSB)",
+    "r2": 0.995126881397327,
+    "pass_rate": 0.7396825396825397,
+    "rchi2": 102.1194836140349,
+    "bic": 3109.2202621133133
+   },
+   "V3 cuda": {
+    "K": "5 (+2 PSB)",
+    "r2": 0.995126881397327,
+    "pass_rate": 0.7396825396825397,
+    "rchi2": 102.1194836140349,
+    "bic": 3109.2202621133133
+   },
+   "V3 fortran": {
+    "K": "5 (+2 PSB)",
+    "r2": 0.995126881397327,
+    "pass_rate": 0.7396825396825397,
+    "rchi2": 102.1194836140349,
+    "bic": 3109.2202621133133
+   },
+   "V3 go": {
+    "K": "5 (+2 PSB)",
+    "r2": 0.995126881397327,
+    "pass_rate": 0.7396825396825397,
+    "rchi2": 102.1194836140349,
+    "bic": 3109.2202621133133
+   },
+   "V3 java": {
+    "K": "5 (+2 PSB)",
+    "r2": 0.995126881397327,
+    "pass_rate": 0.7396825396825397,
+    "rchi2": 102.1194836140349,
+    "bic": 3109.2202621133133
+   },
+   "V3 java_vector": {
+    "K": "5 (+2 PSB)",
+    "r2": 0.995126881397327,
+    "pass_rate": 0.7396825396825397,
+    "rchi2": 102.1194836140349,
+    "bic": 3109.2202621133133
+   },
+   "V3 julia": {
+    "K": "5 (+2 PSB)",
+    "r2": 0.995126881397327,
+    "pass_rate": 0.7396825396825397,
+    "rchi2": 102.1194836140349,
+    "bic": 3109.2202621133133
+   },
+   "V3 python_numba": {
+    "K": "5 (+2 PSB)",
+    "r2": 0.995126881397327,
+    "pass_rate": 0.7396825396825397,
+    "rchi2": 102.1194836140349,
+    "bic": 3109.2202621133133
+   },
+   "V3 python_numpy": {
+    "K": "5 (+2 PSB)",
+    "r2": 0.995126881397327,
+    "pass_rate": 0.7396825396825397,
+    "rchi2": 102.1194836140349,
+    "bic": 3109.2202621133133
+   },
+   "V3 reference": {
+    "K": "5 (+2 PSB)",
+    "r2": 0.995126881397327,
+    "pass_rate": 0.7396825396825397,
+    "rchi2": 102.1194836140349,
+    "bic": 3109.2202621133133
+   },
+   "V3 rust": {
+    "K": "5 (+2 PSB)",
+    "r2": 0.995126881397327,
+    "pass_rate": 0.7396825396825397,
+    "rchi2": 102.1194836140349,
+    "bic": 3109.2202621133133
+   },
+   "V2 (fastdecov reference)": {
+    "K": "17",
+    "r2": 0.9998811844155222,
+    "pass_rate": 1.0,
+    "rchi2": 2.5338060330597845,
+    "bic": 2064.1497847777387
+   },
+   "Octave, fixed peaks": {
+    "K": "12",
+    "r2": -20.742301036542166,
+    "pass_rate": 0.0,
+    "rchi2": 544222.4790605512,
+    "bic": 6217.137171893344
+   },
+   "expert MATLAB dc": {
+    "K": "12",
+    "r2": 0.9981775968026868,
+    "pass_rate": 0.8666666666666667,
+    "rchi2": 44.26276863758171,
+    "bic": 2959.107767997317
+   }
+  },
+  "P2": {
+   "V3 cpp": {
+    "K": "4 (+1 PSB)",
+    "r2": 0.9972533452863535,
+    "pass_rate": 0.71900826446281,
+    "rchi2": 5.934901899708387,
+    "bic": 3910.5309767459908
+   },
+   "V3 cuda": {
+    "K": "4 (+1 PSB)",
+    "r2": 0.9972533452863535,
+    "pass_rate": 0.71900826446281,
+    "rchi2": 5.934901899708387,
+    "bic": 3910.5309767459908
+   },
+   "V3 fortran": {
+    "K": "4 (+1 PSB)",
+    "r2": 0.9972533452863535,
+    "pass_rate": 0.71900826446281,
+    "rchi2": 5.934901899708387,
+    "bic": 3910.5309767459908
+   },
+   "V3 go": {
+    "K": "4 (+1 PSB)",
+    "r2": 0.9972533452863535,
+    "pass_rate": 0.71900826446281,
+    "rchi2": 5.934901899708387,
+    "bic": 3910.5309767459908
+   },
+   "V3 java": {
+    "K": "4 (+1 PSB)",
+    "r2": 0.9972533452863535,
+    "pass_rate": 0.71900826446281,
+    "rchi2": 5.934901899708387,
+    "bic": 3910.5309767459908
+   },
+   "V3 java_vector": {
+    "K": "4 (+1 PSB)",
+    "r2": 0.9972533452863535,
+    "pass_rate": 0.71900826446281,
+    "rchi2": 5.934901899708387,
+    "bic": 3910.5309767459908
+   },
+   "V3 julia": {
+    "K": "4 (+1 PSB)",
+    "r2": 0.9972533452863535,
+    "pass_rate": 0.71900826446281,
+    "rchi2": 5.934901899708387,
+    "bic": 3910.5309767459908
+   },
+   "V3 python_numba": {
+    "K": "4 (+1 PSB)",
+    "r2": 0.9972533452863535,
+    "pass_rate": 0.71900826446281,
+    "rchi2": 5.934901899708387,
+    "bic": 3910.5309767459908
+   },
+   "V3 python_numpy": {
+    "K": "4 (+1 PSB)",
+    "r2": 0.9972533452863535,
+    "pass_rate": 0.71900826446281,
+    "rchi2": 5.934901899708387,
+    "bic": 3910.5309767459908
+   },
+   "V3 reference": {
+    "K": "4 (+1 PSB)",
+    "r2": 0.9972533452863535,
+    "pass_rate": 0.71900826446281,
+    "rchi2": 5.934901899708387,
+    "bic": 3910.5309767459908
+   },
+   "V3 rust": {
+    "K": "4 (+1 PSB)",
+    "r2": 0.9972533452863535,
+    "pass_rate": 0.71900826446281,
+    "rchi2": 5.934901899708387,
+    "bic": 3910.5309767459908
+   },
+   "V2 (fastdecov reference)": {
+    "K": "10",
+    "r2": 0.999508226747311,
+    "pass_rate": 0.9669421487603306,
+    "rchi2": 1.9517859568873484,
+    "bic": 3086.6410007097543
+   },
+   "Octave, fixed peaks": {
+    "K": "10",
+    "r2": -7.092333366864926,
+    "pass_rate": 0.0,
+    "rchi2": 31115.34664026871,
+    "bic": 9009.39831477659
+   },
+   "expert MATLAB dc": {
+    "K": "10",
+    "r2": 0.9961695393430111,
+    "pass_rate": 0.8099173553719008,
+    "rchi2": 6.391268199547275,
+    "bic": 4025.504499598781
+   }
+  }
+ }
+}

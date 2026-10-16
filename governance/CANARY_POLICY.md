@@ -16,7 +16,7 @@ The allow-listed scope in `governance/canary-registry.json` covers maintained co
 - `tests/` and `examples/`;
 - the canary validator, workflow, and this policy.
 
-The policy deliberately excludes `results/`, figures, PDFs, DOCX files, package physics JSON, metrics, determinism records, and other scientific inputs or generated outputs. Do not insert a marker into byte-sensitive measurement data, reproducibility artifacts, or rendered documents.
+The policy deliberately excludes figures, PDFs, DOCX files, package physics JSON, metrics, determinism records, and other scientific inputs or generated outputs. Do not insert a marker into byte-sensitive measurement data, reproducibility artifacts, or rendered documents.
 
 ## Enforcement
 

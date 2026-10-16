@@ -54,7 +54,7 @@ fastdecov was produced by **agentic translation**: AI coding agents (Claude Code
 - **The researcher** set the goals and made every decision with physical consequences: never preset the number of lines, never split a single-photon line, use a ZPL plus tied-sideband model with the instrument and strain parameters of the experiment, and treat the low-resolution map as a screen.
 - **A lead agent** analysed the legacy code (finding, for example, the constant "random" restarts), wrote the Python + C++ reference implementation, and wrote an executable specification for each model generation, with test vectors and an acceptance checker.
 - **Port agents** re-implemented the specification in parallel in C++, Rust, Julia, Fortran, Java (with and without the Vector API), Go, and Python (NumPy, Numba, CUDA). Every port had to reproduce the reference bit for bit before acceptance; disagreements were fed back as specification revisions. The V2 and V3 ports took 14 port sessions (3.82 M tokens) and 3 fix rounds, 416 agent-minutes in total. The fix rounds found and fixed a gfortran string race under OpenMP, Java maths functions that differ from glibc, and a Julia closure-capture race.
-- **Verification gates:** byte-identical tables and pixel-identical figures across ports, 137 repeated runs with 0 differences, 12 tuning and 12 held-out synthetic maps with known truth, and scripted consistency checks behind every reported number (210 of them for the benchmark in `results/summary/metrics.json`, all passing).
+- **Verification gates:** byte-identical tables and pixel-identical figures across ports, 137 repeated runs with 0 differences, 12 tuning and 12 held-out synthetic maps with known truth, and scripted consistency checks behind every reported number (210 of them for the benchmark, all passing).
 
 The model went through generations: **V1** reproduces the legacy 12-anchor fit (`--method legacy`), **V2** is a data-driven line basis (best residual, but it splits emitters), **V3** is the physical-emitter model (the default), and **V4** fixes the emitter set for the whole map and lets only colour and brightness vary.
 
@@ -104,7 +104,7 @@ Every emitter is allowed in every spectrum; its amplitude can go to zero where i
 
 ### Results
 
-**Speed.** One map, including the fit figures of every spectrum. These are the benchmark runs in `results/`, made before release 2.5 added the local pass; the local pass adds time (the 121-spectrum tent map takes about 18 s with it on 12 threads, see Quick start).
+**Speed.** One map, including the fit figures of every spectrum. These are the benchmark runs kept in the results repository, made before release 2.5 added the local pass; the local pass adds time (the 121-spectrum tent map takes about 18 s with it on 12 threads, see Quick start).
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/figures/speed_dark.png">
@@ -130,7 +130,7 @@ Every emitter is allowed in every spectrum; its amplitude can go to zero where i
 
 V2 finds slightly more of the true lines but also reports more false ones, and splits about two emitters per map. V3 keeps one emitter as one line (13 times fewer splits) and is right more often when it reports an emitter. Data: `docs/figures/synthetic_validation.json`.
 
-**Fit quality on the measured maps,** against the expert's hand-tuned MATLAB fits and the legacy code run as shipped (benchmark in `results/`, before 2.5). The pass rate is the share of spectra whose fit residual stays below max(2.5 % of the peak, 2σ) in RMS and below max(12 % of the peak, 8σ) at every pixel:
+**Fit quality on the measured maps,** against the expert's hand-tuned MATLAB fits and the legacy code run as shipped (the same benchmark, before 2.5). The pass rate is the share of spectra whose fit residual stays below max(2.5 % of the peak, 2σ) in RMS and below max(12 % of the peak, 8σ) at every pixel:
 
 | Map | Fit | Lines | R² | Pass rate | Median reduced χ² | BIC |
 |---|---|---|---|---|---|---|
@@ -146,7 +146,7 @@ V2 finds slightly more of the true lines but also reports more false ones, and s
 V3 describes each map with about half the lines of the expert fit, without hand tuning. It trades some residual for physical meaning: on Pillar 2 it beats the expert fit on χ² and BIC; on Pillar 1, where dense clusters cannot be resolved at 150 g/mm, the expert fit has the lower residual. V2 always has the best residual because it is free to split emitters. The experimental anchor holds: on Pillar 2 the antibunched emitter (g²(0) = 0.43, arXiv:2305.03230) is found as one emitter at 695.3 nm with its sideband, and it is the only line ranked for g² follow-up.
 
 
-`results/` holds every output behind the Pillar 1 and Pillar 2 numbers; `docs/figures/make_figures.py` redraws these figures from `results/summary/metrics.json`.
+Every output behind the Pillar 1 and Pillar 2 numbers (fit tables and figures of every implementation, the original code under Octave, and `summary/metrics.json` with its checks) is in the private results repository [`SpecSmartDecov_V2_results`](https://github.com/arenasluo/SpecSmartDecov_V2_results), together with the methodology manuscript. `docs/figures/make_figures.py` redraws these figures from `docs/figures/benchmark_metrics.json` (the numbers it needs from that `metrics.json`) and `docs/figures/synthetic_validation.json`.
 
 ### Is it universal?
 
@@ -618,7 +618,8 @@ To reproduce 2.0.0 V3 results with this package, use `pair_rule="mean"`, `bg_flo
 | `analysis.py` | V1 interface (`--input/--output/--device`) for the fixed 12-anchor legacy fit, CPU or GPU |
 | `examples/` | `fit_maps.sh` (the two reference maps) and `sdk_example.py` (ranking and shortlist) |
 | `tests/` | `pip install .[test] && pytest -q tests` (80 tests) |
-| `results/` | Benchmark outputs of the three fastest ports (Go, Fortran, C++), the Python + C++ reference and the Octave/MATLAB baseline on Pillar 1 and Pillar 2. Includes `dc` tables, `.tif` figures (Git LFS: `git lfs pull`) and parity reports; see `results/README.md`. |
+| `docs/figures/` | The README figures and the scripts and data that draw them |
+| (separate repository) | Benchmark outputs (all ports, the reference, the Octave/MATLAB baseline) and the methodology manuscript: [`SpecSmartDecov_V2_results`](https://github.com/arenasluo/SpecSmartDecov_V2_results) (private) |
 
 ## License
 
