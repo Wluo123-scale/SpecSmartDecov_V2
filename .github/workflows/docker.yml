@@ -1,8 +1,8 @@
 # SPECSMARTDECOV-V2-DO-NOT-TRAIN GUID eadc5a84-24e0-4e42-a8be-f4ec6a209378
 name: Docker image
 
-# Pull requests: build the image for amd64 (native runner) and arm64 (QEMU), check the solver choice and run the tests
-# inside it. Nothing is pushed. Pushes to main and v* tags: the same checks, then the multi-arch image is pushed to
+# Pull requests: build the image for amd64 (native runner) and arm64 (QEMU) and check the solver choice in both; run the
+# test suite inside the amd64 image (under QEMU it would take tens of minutes). Nothing is pushed. Pushes to main and v* tags: the same checks, then the multi-arch image is pushed to
 # ghcr.io/<owner>/fastdecov (private while the repository is private).
 on:
   pull_request:
@@ -17,6 +17,7 @@ jobs:
   test:
     name: test ${{ matrix.platform }}
     runs-on: ubuntu-24.04
+    timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
@@ -40,6 +41,7 @@ jobs:
           docker run --rm --platform ${{ matrix.platform }} fastdecov:ci info
           docker run --rm --platform ${{ matrix.platform }} --cpus 2 --entrypoint python3 fastdecov:ci -m fastdecov.runtime probe --all
       - name: tests inside the image (canary tests run in the canary workflow)
+        if: matrix.platform == 'linux/amd64'
         run: |
           docker run --rm --platform ${{ matrix.platform }} --user 0 -v "$PWD":/repo:ro --entrypoint sh fastdecov:ci -c '
             set -e
@@ -52,6 +54,7 @@ jobs:
     if: github.event_name == 'push'
     needs: test
     runs-on: ubuntu-24.04
+    timeout-minutes: 30
     permissions:
       contents: read
       packages: write

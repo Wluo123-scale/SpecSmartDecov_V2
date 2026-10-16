@@ -45,7 +45,7 @@ docker run --rm --user "$(id -u):$(id -g)" -v "$PWD":/data fastdecov fit spectra
 docker/fastdecov-docker fit spectra out --figures    # the same, as if installed (macOS/Linux shells)
 ```
 
-The current directory is mounted at `/data`, so input and output paths must be inside it and given relative to it. On Windows (PowerShell), use `docker run --rm -v "${PWD}:/data" fastdecov fit spectra out`. `python -m fastdecov.runtime probe --all` (as `--entrypoint python3`) shows the detected hardware and checks every level. The CI workflow `.github/workflows/docker.yml` builds and tests both architectures on every pull request, and pushes to `ghcr.io/<owner>/fastdecov` from `main` and `v*` tags. The package is private while the repository is.
+The current directory is mounted at `/data`, so input and output paths must be inside it and given relative to it. On Windows (PowerShell), use `docker run --rm -v "${PWD}:/data" fastdecov fit spectra out`. `python -m fastdecov.runtime probe --all` (as `--entrypoint python3`) shows the detected hardware and checks every level. The CI workflow `.github/workflows/docker.yml` builds both architectures and checks their solver levels on every pull request (the test suite runs in the amd64 image), and pushes to `ghcr.io/<owner>/fastdecov` from `main` and `v*` tags. The package is private while the repository is.
 
 If `fastdecov` is not found, activate the environment it was installed in (for example `conda activate fastdecov`), or call it by its full path (`~/miniconda3/envs/fastdecov/bin/fastdecov`).
 
