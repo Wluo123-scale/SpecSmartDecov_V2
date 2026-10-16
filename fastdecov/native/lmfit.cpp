@@ -3,7 +3,8 @@
 // One OpenMP thread per fit; analytic Jacobian stored column-major so J^T J is a set of
 // contiguous dot products the compiler vectorises.
 //
-// Build: g++ -O3 -march=native -ffp-contract=fast -fopenmp -shared -fPIC lmfit.cpp -o liblmfit.so -lmvec
+// Build: g++ -O3 -march=native -ffp-contract=fast -fopenmp -shared -fPIC -DFASTDECOV_LIBMVEC lmfit.cpp -o liblmfit.so -lmvec
+// (Linux/glibc; elsewhere without -DFASTDECOV_LIBMVEC and -lmvec. fastdecov/hw.py picks the compiler and flags.)
 #include <cmath>
 #include <vector>
 #include <algorithm>
