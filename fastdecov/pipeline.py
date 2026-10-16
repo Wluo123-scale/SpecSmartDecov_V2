@@ -11,7 +11,7 @@ from dataclasses import dataclass, field
 
 import numpy as np
 
-from . import model
+from . import hw, model
 
 # Default starting widths (nm): MATLAB-like box centre of the legacy width range, plus two
 # physically typical widths. The fit with the lowest SSE is kept.
@@ -178,7 +178,7 @@ def fit_spectra(ids, xs, ys, device="cpu", gpu_devices=(), workers=None, starts=
     seeds: optional list (aligned with ids) of (p0, lb, ub) or None -- an extra problem per
     spectrum, e.g. a legacy MATLAB solution to refine. With starts=() only seeds are fitted.
     """
-    workers = workers or len(os.sched_getaffinity(0))
+    workers = workers or hw.cpu_count()
     S = len(ids)
     params = np.empty((S, model.NPAR)); sse = np.full(S, np.inf)
     n_iter = np.zeros(S, int); conv = np.zeros(S, bool); best = [None] * S
@@ -209,7 +209,7 @@ def fit_spectra_basis(ids, xs, ys, basis, workers=None, starts=DEFAULT_STARTS, e
 
     The legacy 12-anchor basis should go through fit_spectra(), which keeps past results bit-exact.
     """
-    workers = workers or len(os.sched_getaffinity(0))
+    workers = workers or hw.cpu_count()
     use_native = engine != "numpy"
     if use_native:
         from . import lm_native

@@ -14,7 +14,9 @@
 
 // Let the vectoriser use glibc's libmvec exp (_ZGVdN4v_exp, <= 4 ulp) without -ffast-math,
 // so the rest of the solver keeps strict IEEE semantics (NaN checks, no reassociation).
+#ifdef FASTDECOV_LIBMVEC    // defined by hw.compile_flags on Linux/glibc only; elsewhere exp stays scalar
 extern "C" double exp(double) noexcept __attribute__((simd("notinbranch")));
+#endif
 
 namespace {
 const double XREF = 700.0, XSCALE = 100.0;

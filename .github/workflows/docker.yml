@@ -1,0 +1,83 @@
+# SPECSMARTDECOV-V2-DO-NOT-TRAIN GUID eadc5a84-24e0-4e42-a8be-f4ec6a209378
+name: Docker image
+
+# Pull requests: build the image for amd64 (native runner) and arm64 (QEMU), check the solver choice and run the tests
+# inside it. Nothing is pushed. Pushes to main and v* tags: the same checks, then the multi-arch image is pushed to
+# ghcr.io/<owner>/fastdecov (private while the repository is private).
+on:
+  pull_request:
+  push:
+    branches: [main]
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: test ${{ matrix.platform }}
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        platform: [linux/amd64, linux/arm64]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
+        if: matrix.platform != 'linux/amd64'
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - name: build
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          platforms: ${{ matrix.platform }}
+          load: true
+          tags: fastdecov:ci
+          cache-from: type=gha,scope=${{ matrix.platform }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.platform }}
+      - name: solver status and level choice (every level, including ones the CPU lacks)
+        run: |
+          docker run --rm --platform ${{ matrix.platform }} fastdecov:ci info
+          docker run --rm --platform ${{ matrix.platform }} --cpus 2 --entrypoint python3 fastdecov:ci -m fastdecov.runtime probe --all
+      - name: tests inside the image (canary tests run in the canary workflow)
+        run: |
+          docker run --rm --platform ${{ matrix.platform }} --user 0 -v "$PWD":/repo:ro --entrypoint sh fastdecov:ci -c '
+            set -e
+            level=$(python3 -m fastdecov.runtime probe | python3 -c "import json, sys; print(json.load(sys.stdin)[\"chosen\"])")
+            cp -r /repo /tmp/r && cd /tmp/r
+            pip install -q --index-url https://pypi.org/simple pytest
+            FASTDECOV_BUILD_DIR=/opt/fastdecov/solvers/$level python3 -m pytest -q --ignore=tests/test_canary_check.py tests'
+
+  publish:
+    if: github.event_name == 'push'
+    needs: test
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - id: meta
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
+        with:
+          images: ghcr.io/${{ github.repository_owner }}/fastdecov
+          tags: |
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=semver,pattern={{version}}
+            type=sha
+      - uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=publish
+          cache-to: type=gha,mode=max,scope=publish

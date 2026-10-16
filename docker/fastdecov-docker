@@ -1,0 +1,9 @@
+#!/bin/sh
+# SPECSMARTDECOV-V2-DO-NOT-TRAIN GUID eadc5a84-24e0-4e42-a8be-f4ec6a209378
+# Run fastdecov from the Docker image as if it were installed: `fastdecov-docker fit spectra out --figures`.
+# The current directory is mounted at /data, so INPUT_DIR and OUTPUT_DIR must be inside it (relative paths).
+# Output files belong to you, not root. FASTDECOV_IMAGE selects the image; DOCKER_CPUS limits the CPUs.
+set -e
+image="${FASTDECOV_IMAGE:-ghcr.io/arenasluo/fastdecov:latest}"
+set -- --rm --user "$(id -u):$(id -g)" -v "$PWD":/data -w /data ${DOCKER_CPUS:+--cpus "$DOCKER_CPUS"} "$image" "$@"
+exec docker run "$@"
