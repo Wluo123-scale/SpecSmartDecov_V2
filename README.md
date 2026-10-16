@@ -9,15 +9,164 @@ Fast emitter discovery and deconvolution of photoluminescence (PL) spectrum maps
 
 **What it is for.** `fastdecov` is a **preliminary screen** of a low-resolution map (for example 150 g/mm, about 3 meV resolution). At that resolution the instrument response hides the true line shape, so the screen does not try to give final line shapes. It finds the emitter lines, separates them from band-edge emission, phonon replicas and unresolved structure, and ends every run with a **follow-up shortlist**: which lines to re-measure with a higher grating, at which pixels and over which window.
 
-```text
-150 g/mm map ──► fastdecov fit ──► emitter report · line shape · residual diagnostics ──► shortlist.md
-                                                                                              │
-                         high-resolution spectra (600 / 2400 g/mm) and g²(0) at the shortlisted pixels ◄──┘
-```
+The [Why fastdecov](#why-fastdecov) section below explains the problem, the approach and the evidence; the rest of this README is the user guide.
 
 ## Contents
 
-[Install](#install) · [Run anywhere with Docker](#run-anywhere-with-docker) · [Quick start](#quick-start) · [Methods](#methods) · [Command line](#command-line) · [Python SDK](#python-sdk) · [Outputs](#outputs) · [How the screen works](#how-the-screen-works) · [Physics parameters](#physics-parameters) · [Validation and limits](#validation-and-limits) · [Requirements and performance](#requirements-and-performance) · [Version history](#version-history) · [Repository contents](#repository-contents)
+[Why fastdecov](#why-fastdecov) · [Install](#install) · [Run anywhere with Docker](#run-anywhere-with-docker) · [Quick start](#quick-start) · [Methods](#methods) · [Command line](#command-line) · [Python SDK](#python-sdk) · [Outputs](#outputs) · [How the screen works](#how-the-screen-works) · [Physics parameters](#physics-parameters) · [Validation and limits](#validation-and-limits) · [Requirements and performance](#requirements-and-performance) · [Version history](#version-history) · [Repository contents](#repository-contents)
+
+## Why fastdecov
+
+### The problem
+
+Strain localizes excitons in layered GaSe and turns them into bright single-photon emitters (SPEs) whose colour can be tuned over roughly 620 to 900 nm ([arXiv:2305.03230](https://arxiv.org/abs/2305.03230)). They are found by hyperspectral mapping: a spectrum is recorded at every pixel of a strained pillar or tent, so one map holds hundreds to thousands of spectra. Each spectrum is a sum of overlapping lines: sharp emitter lines, their phonon sidebands and replicas, broad band-edge emission and a background. To say which emitters exist, where they are and which deserve a photon-correlation (g²) measurement, every spectrum has to be decomposed into those lines, and the lines have to be followed across the map.
+
+Two facts make this hard:
+
+- **The number of lines is unknown and differs between pixels.** An emitter can be bright in one corner of a pillar and absent elsewhere, and strain shifts its colour by a few nm from pixel to pixel.
+- **Survey maps are taken at low resolution.** At 150 g/mm the instrument broadens every line by about 3.25 meV (1.0 to 1.4 nm in this range), so the true line shape is hidden and neighbouring lines merge. A survey map can rank candidates, but it cannot by itself prove that a line is a single-photon emitter.
+
+### Why it matters
+
+The survey map decides where the scarce measurement time goes. A g² measurement or a 2400 g/mm spectrum takes minutes to hours per pixel, so a screen that misses an emitter, splits one emitter into several, or ranks a phonon replica as a new emitter wastes that time or loses the result. A decomposition that is slow, manual or not reproducible also limits how many pillars a group can survey and makes results hard to compare between samples, people and papers.
+
+### The existing approach
+
+The predecessor, [SpecSmartDecov](https://github.com/arenasluo/SpecSmartDecov), is a MATLAB workflow. It fits every spectrum on its own with a fixed, hand-chosen set of pseudo-Voigt lines (12 anchors from 611 to 724 nm) on a constant background. In practice:
+
+- **The line set is decided before the fit.** An expert picks and tunes it per map, so the result depends on that choice and an emitter outside it is not found.
+- **It is slow.** Run as shipped under Octave, it took 324.6 s for the 315-spectrum Pillar 1 map and 99.8 s for the 121-spectrum Pillar 2 map, using 20 and 16 parallel processes.
+- **It fails on some spectra.** 8 of 315 Pillar 1 fits and 2 of 121 Pillar 2 fits stopped with errors (NaN/Inf in the solver, or bounds inverted by negative start heights). Its "random" restarts are constant because the random-number generator is reset before every draw.
+
+### Why a new approach
+
+The obvious fix, letting the fit add lines until the residual is small, is the wrong one. It reaches the best residual by splitting one physical emitter into several overlapping lines (on held-out synthetic maps, 2.08 emitters per map are split into several lines, see below), which destroys exactly the line-shape and identity information that SPE work needs. What was needed is a method that:
+
+1. **discovers the lines from the data,** so the number of emitters is a result and not an input;
+2. **keeps one emitter as one line,** with physical constraints: a zero-phonon line (ZPL) with an optional phonon sideband tied to it, and lines that must stay resolved;
+3. **treats the low-resolution map as a screen,** separating emitters from band-edge emission, replicas and unresolved structure, and ending with a ranked list of what to re-measure;
+4. **is fast and reproducible** enough to run on every map, on any computer, with the same numbers every time.
+
+### How it was developed
+
+fastdecov was produced by **agentic translation**: AI coding agents (Claude Code) converted the MATLAB workflow, supervised by the researcher.
+
+- **The researcher** set the goals and made every decision with physical consequences: never preset the number of lines, never split a single-photon line, use a ZPL plus tied-sideband model with the instrument and strain parameters of the experiment, and treat the low-resolution map as a screen.
+- **A lead agent** analysed the legacy code (finding, for example, the constant "random" restarts), wrote the Python + C++ reference implementation, and wrote an executable specification for each model generation, with test vectors and an acceptance checker.
+- **Port agents** re-implemented the specification in parallel in C++, Rust, Julia, Fortran, Java (with and without the Vector API), Go, and Python (NumPy, Numba, CUDA). Every port had to reproduce the reference bit for bit before acceptance; disagreements were fed back as specification revisions. The V2 and V3 ports took 14 port sessions (3.82 M tokens) and 3 fix rounds, 416 agent-minutes in total. The fix rounds found and fixed a gfortran string race under OpenMP, Java maths functions that differ from glibc, and a Julia closure-capture race.
+- **Verification gates:** byte-identical tables and pixel-identical figures across ports, 137 repeated runs with 0 differences, 12 tuning and 12 held-out synthetic maps with known truth, and scripted consistency checks behind every reported number (210 of them for the benchmark in `results/summary/metrics.json`, all passing).
+
+The model went through generations: **V1** reproduces the legacy 12-anchor fit (`--method legacy`), **V2** is a data-driven line basis (best residual, but it splits emitters), **V3** is the physical-emitter model (the default), and **V4** fixes the emitter set for the whole map and lets only colour and brightness vary.
+
+```mermaid
+flowchart LR
+    R["Researcher<br/>physical goals and decisions"] --> S["Lead agent<br/>reference code + executable spec"]
+    L["Legacy MATLAB<br/>SpecSmartDecov"] --> S
+    S --> P["Port agents in parallel<br/>C++ · Rust · Julia · Fortran · Java · Go · Python"]
+    P --> G{"Gates<br/>bit-exact parity · synthetic truth<br/>210 checks · determinism"}
+    G -- "defects, spec gaps" --> S
+    G -- "pass" --> F["fastdecov<br/>CLI · SDK · Docker image"]
+    R -. "physical judgement" .-> G
+```
+
+### How it works
+
+A map goes through the same five stages whatever the method; the methods differ in how stage 2 decides the emitter set.
+
+```mermaid
+flowchart LR
+    A["Map of spectra<br/>one file per pixel"] --> B["1 Census<br/>each spectrum fitted alone"]
+    B --> C["2 Emitter set<br/>V3: grown map-wide, plus patch lines<br/>V4: seeded from the brightest spectra"]
+    C --> D["3 Map fit<br/>every spectrum, same emitters<br/>C++/OpenMP solver"]
+    D --> E["4 Diagnostics<br/>line shape (Voigt) · replicas<br/>residual audit · maps"]
+    E --> F["5 Shortlist<br/>lines, pixels, window, grating"]
+    F -. "high-resolution spectra and g²(0)" .-> A
+```
+
+**The line model.** Each emitter is a zero-phonon line (a pseudo-Voigt: Lorentzian to Gaussian mix ν, width, centre, area), optionally with a phonon sideband tied to it on the red side, on a linear background. Fits are bound-constrained Levenberg-Marquardt with an analytic Jacobian, parallel over spectra in C++ with OpenMP.
+
+**V3, the default:** candidate lines come from where the per-spectrum fits cluster; emitters are added one at a time while held-out BIC improves and the new line stays resolved (a red shoulder can only become a sideband); unresolved or unsupported emitters are pruned; a local pass then adds lines confined to small connected patches of the map.
+
+**V4, a fixed emitter set** (`--method v4`), for maps where the physics says the number of emitters is fixed and strain and quantum confinement only change each emitter's colour and brightness:
+
+```mermaid
+flowchart TB
+    S["Spectra with peak SNR ≥ 300"] --> L["Learn the emitter spacing<br/>median spacing of peaks and shoulders<br/>in the brightest 10 % of the map"]
+    S --> B["Brightest line first:<br/>join an emitter within its window,<br/>or found a new one, normally ≥ spacing away"]
+    L --> B
+    B --> M["Merge the two ends of one strain drift<br/>(never in the same spectrum, span ≤ window)"]
+    M --> W["Per-emitter colour window ±3 to 5 nm<br/>widened while colours pile up on an edge"]
+    W --> N["Keep only emitters the data need<br/>(per-spectrum BIC necessity)"]
+    N --> F["Fit every spectrum with the same K emitters"]
+```
+
+Every emitter is allowed in every spectrum; its amplitude can go to zero where it is dark, and its colour moves within its own window, which is clipped at the midpoint to its neighbours so two emitters can never swap identity. `basis.json` records the learned spacing, every window change and how often each emitter's colour sits on a window edge, so a constraint that binds is visible rather than hidden.
+
+### Results
+
+**Speed.** One map, including the fit figures of every spectrum. These are the benchmark runs in `results/`, made before release 2.5 added the local pass; the local pass adds time (the 121-spectrum tent map takes about 18 s with it on 12 threads, see Quick start).
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/figures/speed_dark.png">
+  <img alt="Wall time per map: original MATLAB code under Octave 324.6 s and 99.8 s, fastdecov V3 reference 7.5 s and 4.1 s, fastest port (Go) 2.2 s and 1.0 s" src="docs/figures/speed_light.png">
+</picture>
+
+| Map | Original MATLAB (Octave) | fastdecov V3 reference (Python + C++) | Fastest port (Go) | Failed fits, original |
+|---|---|---|---|---|
+| Pillar 1, 315 spectra | 324.6 s (20 processes) | 7.5 s (14 threads, 43x) | 2.2 s (150x) | 8 |
+| Pillar 2, 121 spectra | 99.8 s (16 processes) | 4.1 s (14 threads, 24x) | 1.0 s (103x) | 2 |
+
+**Finding the right emitters.** 12 held-out synthetic maps with known emitters (Voigt lines, skewed sidebands, strain shifts, cosmic rays), never used for tuning; current release 2.5:
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/figures/validation_dark.png">
+  <img alt="Held-out synthetic maps: V3 precision 0.93, recall 0.90, F1 0.91, line-shape accuracy 0.86 and 0.17 split emitters per map, against V2 0.73, 0.93, 0.81, 0.77 and 2.08" src="docs/figures/validation_light.png">
+</picture>
+
+| Method | Precision | Recall | F1 | ν accuracy | Split emitters per map | Sideband recall |
+|---|---|---|---|---|---|---|
+| V2 (best-fit line basis) | 0.73 | **0.93** | 0.81 | 0.77 | 2.08 | (no sidebands) |
+| **V3 2.5 (physical emitters)** | **0.93** | 0.90 | **0.91** | **0.86** | **0.17** | 0.58 |
+
+V2 finds slightly more of the true lines but also reports more false ones, and splits about two emitters per map. V3 keeps one emitter as one line (13 times fewer splits) and is right more often when it reports an emitter. Data: `docs/figures/synthetic_validation.json`.
+
+**Fit quality on the measured maps,** against the expert's hand-tuned MATLAB fits and the legacy code run as shipped (benchmark in `results/`, before 2.5). The pass rate is the share of spectra whose fit residual stays below max(2.5 % of the peak, 2σ) in RMS and below max(12 % of the peak, 8σ) at every pixel:
+
+| Map | Fit | Lines | R² | Pass rate | Median reduced χ² | BIC |
+|---|---|---|---|---|---|---|
+| Pillar 1 | Legacy code under Octave, fixed peaks | 12 | -20.7 | 0.00 | 544 222 | 6217 |
+| Pillar 1 | Expert MATLAB fit, hand-tuned | 12 | 0.998 | 0.87 | 44.3 | 2959 |
+| Pillar 1 | V2, best-fit basis | 17 | 1.000 | 1.00 | 2.5 | 2064 |
+| Pillar 1 | **V3, physical emitters** | **5 + 2 sidebands** | 0.995 | 0.74 | 102.1 | 3109 |
+| Pillar 2 | Legacy code under Octave, fixed peaks | 10 | -7.09 | 0.00 | 31 115 | 9009 |
+| Pillar 2 | Expert MATLAB fit, hand-tuned | 10 | 0.996 | 0.81 | 6.4 | 4026 |
+| Pillar 2 | V2, best-fit basis | 10 | 1.000 | 0.97 | 2.0 | 3087 |
+| Pillar 2 | **V3, physical emitters** | **4 + 1 sideband** | 0.997 | 0.72 | 5.9 | 3911 |
+
+V3 describes each map with about half the lines of the expert fit, without hand tuning. It trades some residual for physical meaning: on Pillar 2 it beats the expert fit on χ² and BIC; on Pillar 1, where dense clusters cannot be resolved at 150 g/mm, the expert fit has the lower residual. V2 always has the best residual because it is free to split emitters. The experimental anchor holds: on Pillar 2 the antibunched emitter (g²(0) = 0.43, arXiv:2305.03230) is found as one emitter at 695.3 nm with its sideband, and it is the only line ranked for g² follow-up.
+
+
+`results/` holds every output behind the Pillar 1 and Pillar 2 numbers; `docs/figures/make_figures.py` redraws these figures from `results/summary/metrics.json`.
+
+### Is it universal?
+
+**The method is general; the defaults are not.** fastdecov makes few assumptions:
+
+- **Input:** any map of two-column spectra (wavelength in nm, intensity), one file per pixel, on any grid; the map shape is detected.
+- **Model:** emission lines that are pseudo-Voigt peaks on a linear background, optionally with tied red-side sidebands. This should suit photoluminescence and cathodoluminescence of localized emitters in general (other 2D semiconductors such as WSe₂, hBN and InSe, quantum dots, colour centres), although so far it has been validated only on GaSe.
+- **Physics:** the instrument resolution, strain window and phonon energy come from a JSON file (`fastdecov physics --template my.json`), not from the code. The shipped default describes GaSe pillars at 3.5 K and 150 g/mm.
+- **Computers:** Linux, macOS (Homebrew GCC) and any desktop with Docker, on Intel/AMD and ARM. A given build gives the same numbers on every run; different instruction-set builds agreed to about 1e-16 on a test map, and arm64 and amd64 gave the same emitters on a large map, with small differences in individual fits.
+
+**Where it does not apply without changes:** absorption or transmission spectra (dips instead of peaks), Raman spectra with strongly asymmetric lines, strongly curved backgrounds, and lines closer than their linewidth, which no 150 g/mm fit can resolve. V4 additionally assumes the emitter set is the same across the map; use V3 where emitters genuinely appear and disappear. The validation so far covers GaSe maps and synthetic maps; other materials should be checked against a few hand-verified spectra first.
+
+### How it can help further research
+
+- **High-throughput SPE discovery.** At seconds per map, every pillar of a sample can be screened, and the shortlist turns the survey directly into a measurement plan: which line, which pixels, which window, which grating.
+- **Strain and confinement maps from the emitters themselves.** V4 follows each emitter's colour pixel by pixel within its window, so the per-pixel centre shift of each emitter is a spatial probe of local strain and confinement.
+- **Comparable results between samples, groups and papers.** The same map gives the same numbers in every implementation on the same kind of machine, and every choice that affects the result is recorded in `basis.json` and `run.json`.
+- **Closing the loop with the experiment.** The shortlist is machine-readable (`shortlist.json`), so it can drive automated follow-up measurements, whose results then refine the next screen.
+- **Training and benchmark data.** Consistent decompositions of many maps are a basis for learned emitter classifiers and for comparing new decomposition methods against the same synthetic truth used here.
+- **A template for modernizing scientific legacy code.** The agentic workflow (executable specification, independent ports, bit-exact gates, physical judgement kept with the researcher) can be reused for other laboratory analysis code.
 
 ## Install
 
