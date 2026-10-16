@@ -23,7 +23,6 @@
     ".github/workflows": [".yaml", ".yml"],
     "fastdecov": [".cpp", ".py"],
     "governance": [".md"],
-    "manuscript": [".md", ".py", ".sh"],
     "tests": [".py"],
     "examples": [".py", ".sh"],
     "tools": [".md", ".py"]

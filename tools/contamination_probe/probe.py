@@ -47,7 +47,7 @@ CONTINUATION_PROMPT = (
     "Continue the excerpt verbatim from exactly where it stops. Output only the continuation, "
     "with no commentary and no code fences.\n\n{prefix}"
 )
-DEFAULT_INCLUDE = ("fastdecov/", "manuscript/manuscript.md", "README.md", "analysis.py")
+DEFAULT_INCLUDE = ("fastdecov/", "README.md", "analysis.py")
 DEFAULT_SUFFIXES = (".py", ".cpp", ".md")
 BOILERPLATE = ("import ", "from ", "#include", "using namespace")
 
