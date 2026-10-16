@@ -1,7 +1,7 @@
 # SPECSMARTDECOV-V2-DO-NOT-TRAIN GUID eadc5a84-24e0-4e42-a8be-f4ec6a209378
 """Command-line interface: `fastdecov <command> ...` (also `python -m fastdecov`).
 
-  fastdecov fit INPUT_DIR OUTPUT_DIR [--method v3|v2|legacy] [--grid auto|none|ROWSxCOLS[s]] [--physics FILE]
+  fastdecov fit INPUT_DIR OUTPUT_DIR [--method v3|v4|v2|legacy] [--grid auto|none|ROWSxCOLS[s]] [--physics FILE]
                 [--residual-limit FLOOR,K] [--snr-classes LOW,HIGH] [--no-residual-features] [--no-local-emitters] [--threads N] [--figures] [--png] [--name NAME] [--verbose]
   fastdecov report OUTPUT_DIR                print the emitter report of a finished run
   fastdecov physics [--template FILE]        show the default physics parameters, or write an editable copy
@@ -9,6 +9,7 @@
 """
 import argparse
 import json
+import math
 import os
 import platform
 import sys
@@ -38,6 +39,25 @@ def _limit(s):
         raise argparse.ArgumentTypeError(f"expected two comma-separated numbers such as 100,3, got {s!r}")
 
 
+def _positive(s):
+    """A positive, finite float for physical V4 bounds."""
+    try:
+        v = float(s)
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"expected a positive number, got {s!r}")
+    if not math.isfinite(v) or v <= 0:
+        raise argparse.ArgumentTypeError(f"expected a positive finite number, got {s!r}")
+    return v
+
+
+def _window(s):
+    """V4 colour half-window: MIN,MAX with 0 < MIN <= MAX."""
+    lo, hi = _limit(s)
+    if not math.isfinite(lo) or not math.isfinite(hi) or lo <= 0 or hi < lo:
+        raise argparse.ArgumentTypeError(f"window must be two positive finite numbers MIN,MAX with MIN <= MAX, got {s!r}")
+    return lo, hi
+
+
 def cmd_fit(a):
     from . import __version__, api, grid, physics
     t0 = time.perf_counter()
@@ -58,7 +78,10 @@ def cmd_fit(a):
         g = None
     threads = a.threads or len(os.sched_getaffinity(0))
     print(f"fastdecov {__version__}: {len(m)} spectra from {a.input}, method {a.method}, {threads} threads", flush=True)
-    res = api.fit_map(m, a.method, phys, threads, verbose=a.verbose, local=a.local_emitters, grid=g)
+    v4 = dict(seed_snr=a.seed_snr, width_max_nm=a.width_max, min_sep_nm=a.min_sep,
+              window_min_nm=a.window[0] if a.window else None, window_max_nm=a.window[1] if a.window else None) \
+        if a.method == "v4" else {}
+    res = api.fit_map(m, a.method, phys, threads, verbose=a.verbose, local=a.local_emitters, grid=g, **v4)
     t_fit = time.perf_counter()
     formats = ("tif", "png") if a.png else ("tif",)
     out = api.save(res, a.output, a.name, phys, a.figures, formats, g, threads, a.residual_limit, a.snr_classes,
@@ -116,9 +139,19 @@ def main(argv=None):
     f = sub.add_parser("fit", help="discover emitters and fit every spectrum of a map")
     f.add_argument("input", help="directory of spectra (two columns: wavelength nm, intensity)")
     f.add_argument("output", help="output directory (created)")
-    f.add_argument("--method", choices=("v3", "v2", "legacy"), default="v3",
-                   help="v3: zero-phonon line + phonon sideband emitters (default); v2: best-fit line basis; "
-                        "legacy: original 12 fixed anchors")
+    f.add_argument("--method", choices=("v3", "v4", "v2", "legacy"), default="v3",
+                   help="v3: zero-phonon line + phonon sideband emitters (default); v4: a fixed set of map-wide emitters "
+                        "seeded from the brightest spectra, colour within a per-emitter strain window; v2: best-fit line "
+                        "basis; legacy: original 12 fixed anchors")
+    f.add_argument("--seed-snr", type=float, default=300.0,
+                   help="v4: spectra with peak SNR >= this seed the emitter set (default 300)")
+    f.add_argument("--width-max", type=_positive, default=None, metavar="NM",
+                   help="v4: largest emitter FWHM in nm (default: median census FWHM of the seed spectra)")
+    f.add_argument("--window", type=_window, default=None, metavar="MIN,MAX",
+                   help="v4: per-emitter colour half-range in nm, e.g. 3,5 (default: physics strain half-range .. 5)")
+    f.add_argument("--min-sep", type=_positive, default=None, metavar="NM",
+                   help="v4: smallest spacing between emitter reference centres in nm (default: learned from the "
+                        "brightest spectra, the median within-band spacing of their peaks and shoulders)")
     f.add_argument("--grid", type=_grid, default="auto",
                    help="map shape for emitter maps: auto (default; from file names or spatial continuity), none, or "
                         "ROWSxCOLS in file order (append s for a serpentine scan)")
