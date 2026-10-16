@@ -17,12 +17,12 @@ Fast emitter discovery and deconvolution of photoluminescence (PL) spectrum maps
 
 ## Contents
 
-[Install](#install) · [Quick start](#quick-start) · [Methods](#methods) · [Command line](#command-line) · [Python SDK](#python-sdk) · [Outputs](#outputs) · [How the screen works](#how-the-screen-works) · [Physics parameters](#physics-parameters) · [Validation and limits](#validation-and-limits) · [Requirements and performance](#requirements-and-performance) · [Version history](#version-history) · [Repository contents](#repository-contents)
+[Install](#install) · [Run anywhere with Docker](#run-anywhere-with-docker) · [Quick start](#quick-start) · [Methods](#methods) · [Command line](#command-line) · [Python SDK](#python-sdk) · [Outputs](#outputs) · [How the screen works](#how-the-screen-works) · [Physics parameters](#physics-parameters) · [Validation and limits](#validation-and-limits) · [Requirements and performance](#requirements-and-performance) · [Version history](#version-history) · [Repository contents](#repository-contents)
 
 ## Install
 
 ```bash
-git clone https://github.com/FDU-USTC-SJTU/SpecSmartDecov_V2.git
+git clone https://github.com/arenasluo/SpecSmartDecov_V2.git
 cd SpecSmartDecov_V2
 pip install -e .            # or: pip install .
 fastdecov info              # version and C++ solver status
@@ -39,13 +39,23 @@ The C++ solvers are compiled on first use; see [Requirements and performance](#r
 The image needs nothing on the host but Docker (Linux, macOS, Windows), and runs natively on Intel/AMD (`amd64`) and ARM (`arm64`, including Apple Silicon) machines. The solvers are compiled into it once per instruction-set level. At start-up the image picks the best level the CPU supports, checks it on a small synthetic map in a separate process (a build the CPU cannot run is rejected, not used), and uses as many threads as the container may (`--cpus` is respected).
 
 ```bash
-docker build -t fastdecov .                          # or pull ghcr.io/arenasluo/fastdecov (built by CI from main)
+docker build -t fastdecov .                          # build from this checkout, or pull the CI image (below)
 docker run --rm -v "$PWD":/data fastdecov info       # solver status
 docker run --rm --user "$(id -u):$(id -g)" -v "$PWD":/data fastdecov fit spectra out --figures --name my_map
 docker/fastdecov-docker fit spectra out --figures    # the same, as if installed (macOS/Linux shells)
 ```
 
-The current directory is mounted at `/data`, so input and output paths must be inside it and given relative to it. `python -m fastdecov.runtime probe --all` (as `--entrypoint python3`) shows the detected hardware and checks every level. The CI workflow `.github/workflows/docker.yml` builds both architectures and checks their solver levels on every pull request (the test suite runs in the amd64 image), and pushes to `ghcr.io/<owner>/fastdecov` from `main` and `v*` tags. The package is private while the repository is.
+The current directory is mounted at `/data`, so input and output paths must be inside it and given relative to it. `python -m fastdecov.runtime probe --all` (as `--entrypoint python3`) shows the detected hardware and checks every level.
+
+**Prebuilt image.** The CI workflow `.github/workflows/docker.yml` builds both architectures and checks their solver levels on every pull request (the test suite runs in the amd64 image). On every push to `main` it also publishes `ghcr.io/arenasluo/fastdecov:latest` and `:sha-<commit>`; a `v*` tag adds `:<version>`. The package is private while the repository is, so log in first with a GitHub token that has the `read:packages` scope:
+
+```bash
+echo "$GITHUB_TOKEN" | docker login ghcr.io -u <github-user> --password-stdin
+docker pull ghcr.io/arenasluo/fastdecov:latest       # Docker picks amd64 or arm64 automatically
+docker run --rm -v "$PWD":/data ghcr.io/arenasluo/fastdecov:latest info
+```
+
+**Settings.** `docker/fastdecov-docker` reads `FASTDECOV_IMAGE` (default `ghcr.io/arenasluo/fastdecov:latest`; for example `fastdecov` for a local build) and `DOCKER_CPUS` (passed as `--cpus`). Inside the image, `FASTDECOV_SOLVERS` is the directory of solver builds (`/opt/fastdecov/solvers`) and `FASTDECOV_CACHE` the file that caches the chosen level (`/tmp/fastdecov-solver.json`, rebuilt for every new container).
 
 #### Windows
 
@@ -158,6 +168,11 @@ res.K, res.psb                                             # number of component
 [res.median(0, k) for k in range(res.K)]                   # centres (nm)
 res.table      # (spectra, components, 8): ZPL centre, ν, FWHM, ZPL area, PSB area, PSB offset, PSB FWHM, ZPL fraction
 res.params     # raw fit parameters per spectrum (layout in fastdecov/emitter.py)
+
+res4 = api.fit_map(m, method="v4", threads=8,              # V4: fixed map-wide emitter set (options: see basis4.OPTS4)
+                   window_min_nm=3.0, window_max_nm=5.0)     # seed_snr, width_max_nm, min_sep_nm are learned/defaulted
+res4.extra["reference_centers"], res4.extra["min_sep_nm"]  # emitter references (nm) and the spacing used
+res4.extra["edge_fraction"]                                # per emitter: share of colours on the low / high window edge
 
 out = api.save(res, "out/pillar6", grid="auto", figures=True)
 out["ranking"]     # per component: kind, flags, line_shape (Voigt), g2_order, replica
