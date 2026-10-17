@@ -28,7 +28,7 @@ width is capped, so a band must be explained by the (unresolved-looking) emitter
 """
 import numpy as np
 
-from . import basis as B, basis3 as B3, physics
+from . import basis as B, basis3 as B3, emitter, hw, lm_native, physics
 
 OPTS4 = dict(seed_snr=300.0, min_seeds=20, width_max_nm=None, min_seed_spectra=3, resolve=0.85, accept_frac=0.5,
              spec_gain=10.0, max_emitters=40, grow_tries=3, grow_rounds=6, edge_x_width=0.5, min_line_share=0.02,
@@ -167,30 +167,112 @@ def seed_emitters(cens, seeds, x_range, half, wmax, o):
     return out
 
 
-def _necessary(xm, ym, W, fit, k, o, wmin, wmax):
-    """Is emitter k needed? Refit, without it (neighbours' windows may open up), the spectra where it carries >= 2 %
-    of the line area."""
-    core = np.flatnonzero(fit.share[:, k] >= 0.02)
-    if core.size < o["min_seed_spectra"]:
-        return False, core.size, 0.0
-    trial = W.without(k).basis(wmin, wmax)
-    fT = B3.fit_set([xm[i] for i in core], [ym[i] for i in core], trial, o["starts"], o, o["_workers"])
+def _bkey(b, starts):
+    return (b.centers.tobytes(), b.lo.tobytes(), b.hi.tobytes(), b.wmin.tobytes(), b.wmax.tobytes(), b.psb.tobytes(),
+            tuple(starts))
+
+
+def fit_many(xm, ym, jobs, starts, o, workers=None, cache=None):
+    """Several basis3.fit_set calls in one: jobs = [(indices into xm, basis)] -> [Fit], each identical to
+    B3.fit_set([xm[i] for i in idx], [ym[i] for i in idx], basis, starts, o). Every (spectrum, start) problem is an
+    independent deterministic fit, so batching the problems of all jobs into one solver call per (spectrum length,
+    sideband layout) - and one more for the background-floor refits - changes no result, only how many problems the
+    solver's threads share. cache: {(basis, starts, spectrum index): (params, sse, start)}; a basis already fitted to a
+    spectrum with the same starts (e.g. the refit after a drop, whose basis was just fitted to the dropped emitter's core
+    spectra in its necessity test) is not fitted again."""
+    best, todo = {}, []
+    for j, (idx, b) in enumerate(jobs):
+        key = _bkey(b, starts)
+        for q, s in enumerate(idx):
+            hit = cache.get((key, int(s))) if cache is not None else None
+            if hit is not None:
+                best[(j, q)] = hit
+            else:
+                todo.append((j, q, int(s), key))
+    groups = {}
+    for t in todo:
+        b = jobs[t[0]][1]
+        groups.setdefault((len(xm[t[2]]), b.psb.tobytes()), []).append(t)
+    for (L, _), items in groups.items():
+        rows = {s: r for r, s in enumerate(dict.fromkeys(t[2] for t in items))}
+        X = np.stack([xm[s] for s in rows]); Y = np.stack([ym[s] for s in rows])
+        P0, LB, UB, SP, own = [], [], [], [], []
+        for n, (j, q, s, key) in enumerate(items):
+            for ws in starts:
+                a, l, u = B3.setup(X[rows[s]], Y[rows[s]], jobs[j][1], ws, o)
+                P0.append(a); LB.append(l); UB.append(u); SP.append(rows[s]); own.append(n)
+        psb = jobs[items[0][0]][1].psb
+        P, SS, _, _ = lm_native.fit_problems_zp(X, Y, np.array(SP), np.array(P0), np.array(LB), np.array(UB), psb,
+                                                threads=workers or 0)
+        SS = np.where(np.isfinite(SS), SS, np.inf); SP = np.array(SP); own = np.array(own)
+        if o.get("bg_floor_sigma") is not None:
+            P, SS = B3._bg_floor(X, Y, SP, P, SS, np.array(LB), np.array(UB), jobs[items[0][0]][1], o, workers)
+        for n, (j, q, s, key) in enumerate(items):
+            c = np.flatnonzero(own == n); k = c[np.argmin(SS[c])]
+            res = (P[k].copy(), float(SS[k]), starts[k - c[0]])
+            best[(j, q)] = res
+            if cache is not None:
+                cache[(key, s)] = res
+    out = []
+    for j, (idx, b) in enumerate(jobs):
+        npar = emitter.offsets(b.psb)[1]
+        params = np.empty((len(idx), npar)); sse = np.empty(len(idx)); start = [None] * len(idx)
+        for q in range(len(idx)):
+            params[q], sse[q], start[q] = best[(j, q)]
+        out.append(B3.Fit(b, params, sse, np.array([len(xm[s]) for s in idx], float), start))
+    return out
+
+
+def _seed_fit(xm, ym, W, o, wmin, wmax):
+    if o.get("_cache") is None:                       # no cache (direct callers): plain fit_set
+        return B3.fit_set(xm, ym, W.basis(wmin, wmax), o["starts"], o, o.get("_workers"))
+    return fit_many(xm, ym, [(np.arange(len(xm)), W.basis(wmin, wmax))], o["starts"], o, o.get("_workers"), o.get("_cache"))[0]
+
+
+def _necessity(fit, fT, core, o):
     n = fit.n[core]
     d = B3._bic(fT.sse, n, 0) - B3._bic(fit.sse[core], n, 4)          # > 0: worse without emitter k
     need = float(np.mean(d > o["spec_gain"]))
     return need >= o["accept_frac"], core.size, need
 
 
+def _necessary_many(xm, ym, W, fit, ks, o, wmin, wmax):
+    """_necessary for several emitters, their refits batched in one fit_many call (same results as one by one)."""
+    cores = {k: np.flatnonzero(fit.share[:, k] >= 0.02) for k in ks}
+    run = [k for k in ks if cores[k].size >= o["min_seed_spectra"]]
+    fits = dict(zip(run, fit_many(xm, ym, [(cores[k], W.without(k).basis(wmin, wmax)) for k in run], o["starts"], o,
+                                  o.get("_workers"), o.get("_cache"))))
+    return {k: (_necessity(fit, fits[k], cores[k], o) if k in fits else (False, cores[k].size, 0.0)) for k in ks}
+
+
+def _necessary(xm, ym, W, fit, k, o, wmin, wmax):
+    """Is emitter k needed? Refit, without it (neighbours' windows may open up), the spectra where it carries >= 2 %
+    of the line area."""
+    return _necessary_many(xm, ym, W, fit, [k], o, wmin, wmax)[k]
+
+
 def _prune(xm, ym, W, fit, o, hist, wmin, wmax):
+    """Drop the first unnecessary emitter in order of increasing total ZPL area, refit, repeat. The necessity tests of
+    the next emitters in that order are computed together (until the batch has >= 6 problems per thread) so the solver's
+    threads stay busy; the scan still stops at the first unnecessary emitter and later results are discarded, so every
+    decision is the one-by-one decision."""
+    threads = o.get("_workers") or hw.cpu_count()
     while W.K > 1:
-        order = np.argsort(fit.tab[..., 3].sum(0))                      # weakest total ZPL area first
+        order = [int(k) for k in np.argsort(fit.tab[..., 3].sum(0))]   # weakest total ZPL area first
         dropped = False
-        for k in order:
-            ok, n_core, need = _necessary(xm, ym, W, fit, k, o, wmin, wmax)
-            if not ok:
-                hist.append(dict(step="drop", center=round(float(W.refs[k]), 2), core_spectra=int(n_core), need=round(need, 2)))
-                W = W.without(k); fit = B3.fit_set(xm, ym, W.basis(wmin, wmax), o["starts"], o, o["_workers"]); dropped = True
-                break
+        i = 0
+        while i < len(order) and not dropped:
+            chunk, probs = [], 0
+            while i < len(order) and (not chunk or probs < 6 * threads):
+                k = order[i]; i += 1; chunk.append(k)
+                probs += int(np.sum(fit.share[:, k] >= 0.02)) * len(o["starts"])
+            res = _necessary_many(xm, ym, W, fit, chunk, o, wmin, wmax)
+            for k in chunk:
+                ok, n_core, need = res[k]
+                if not ok:
+                    hist.append(dict(step="drop", center=round(float(W.refs[k]), 2), core_spectra=int(n_core), need=round(need, 2)))
+                    W = W.without(k); fit = _seed_fit(xm, ym, W, o, wmin, wmax); dropped = True
+                    break
         if not dropped:
             break
     return W, fit
@@ -223,7 +305,7 @@ def _widen(xm, ym, W, fit, o, hist, wmin, wmax, hmax):
         if not moved:
             break
         hist.append(dict(step="widen", round=rnd + 1, windows=moved))
-        W = W2; fit = B3.fit_set(xm, ym, W.basis(wmin, wmax), o["starts"], o, o["_workers"])
+        W = W2; fit = _seed_fit(xm, ym, W, o, wmin, wmax)
     return W, fit
 
 
@@ -258,7 +340,7 @@ def _grow(xs_s, ys_s, keeps_s, sig_s, xm, ym, W, fit, o, phys, hist, wmin, wmax,
             if not np.all(np.abs(g["ref"] - W.refs) >= o["min_sep_nm"]):
                 continue
             Wt = W.with_emitter(g["ref"], hmin)
-            fT = B3.fit_set(xm, ym, Wt.basis(wmin, wmax), o["starts"], o, o["_workers"])
+            fT = _seed_fit(xm, ym, Wt, o, wmin, wmax)
             k = int(np.argmin(np.abs(Wt.refs - g["ref"])))
             ok, n_core, need = _necessary(xm, ym, Wt, fT, k, o, wmin, wmax)
             hist.append(dict(step="grow", center=round(float(g["ref"]), 2), spectra=len(g["members"]), accepted=bool(ok),
@@ -276,6 +358,7 @@ def fit(xs, ys, opts=None, phys=None, workers=None, verbose=False):
     phys = phys or physics.load()
     o = {**B.DEFAULTS, **B.GROW_DEFAULTS, **B3.OPTS3, **OPTS4, **{k: v for k, v in (opts or {}).items() if v is not None}}
     o["_workers"] = workers
+    o["_cache"] = {}          # seed fits by (basis, starts, seed index); see fit_many
     hmin = float(o["window_min_nm"] if o["window_min_nm"] is not None else phys["strain_shift_halfrange_nm"])
     hmax = float(o["window_max_nm"])
     if not np.isfinite(hmin) or hmin <= 0:
@@ -324,7 +407,7 @@ def fit(xs, ys, opts=None, phys=None, workers=None, verbose=False):
     xs_s = [xs[i] for i in seeds]; ys_s = [ys[i] for i in seeds]; ks_s = [keeps[i] for i in seeds]
     sig_s = [cens[i]["sigma"] for i in seeds]
     xm_s = [xm[i] for i in seeds]; ym_s = [ym[i] for i in seeds]
-    f_s = B3.fit_set(xm_s, ym_s, W.basis(wmin, wmax), o["starts"], o, workers)
+    f_s = _seed_fit(xm_s, ym_s, W, o, wmin, wmax)
     W, f_s = _prune(xm_s, ym_s, W, f_s, o, hist, wmin, wmax)
     W, f_s = _widen(xm_s, ym_s, W, f_s, o, hist, wmin, wmax, hmax)
     W, f_s = _grow(xs_s, ys_s, ks_s, sig_s, xm_s, ym_s, W, f_s, o, phys, hist, wmin, wmax, hmax, hmin)
