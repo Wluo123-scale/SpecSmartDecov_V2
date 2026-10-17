@@ -4,6 +4,6 @@
 # The current directory is mounted at /data, so INPUT_DIR and OUTPUT_DIR must be inside it (relative paths).
 # Output files belong to you, not root. FASTDECOV_IMAGE selects the image; DOCKER_CPUS limits the CPUs.
 set -e
-image="${FASTDECOV_IMAGE:-ghcr.io/arenasluo/fastdecov:latest}"
+image="${FASTDECOV_IMAGE:-ghcr.io/wluo123-scale/fastdecov:latest}"
 set -- --rm --user "$(id -u):$(id -g)" -v "$PWD":/data -w /data ${DOCKER_CPUS:+--cpus "$DOCKER_CPUS"} "$image" "$@"
 exec docker run "$@"

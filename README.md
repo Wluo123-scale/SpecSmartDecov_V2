@@ -171,7 +171,7 @@ Every output behind the Pillar 1 and Pillar 2 numbers (fit tables and figures of
 ## Install
 
 ```bash
-git clone https://github.com/arenasluo/SpecSmartDecov_V2.git
+git clone https://github.com/Wluo123-scale/SpecSmartDecov_V2.git
 cd SpecSmartDecov_V2
 pip install -e .            # or: pip install .
 fastdecov info              # version and C++ solver status
@@ -196,15 +196,15 @@ docker/fastdecov-docker fit spectra out --figures    # the same, as if installed
 
 The current directory is mounted at `/data`, so input and output paths must be inside it and given relative to it. `python -m fastdecov.runtime probe --all` (as `--entrypoint python3`) shows the detected hardware and checks every level.
 
-**Prebuilt image.** The CI workflow `.github/workflows/docker.yml` builds both architectures and checks their solver levels on every pull request (the test suite runs in the amd64 image). On every push to `main` it also publishes `ghcr.io/arenasluo/fastdecov:latest` and `:sha-<commit>`; a `v*` tag adds `:<version>`. The package is private for now, so log in first with a GitHub token that has the `read:packages` scope:
+**Prebuilt image.** The CI workflow `.github/workflows/docker.yml` builds both architectures and checks their solver levels on every pull request (the test suite runs in the amd64 image). On every push to `main` it also publishes `ghcr.io/wluo123-scale/fastdecov:latest` and `:sha-<commit>`; a `v*` tag adds `:<version>`. The package is private for now, so log in first with a GitHub token that has the `read:packages` scope:
 
 ```bash
 echo "$GITHUB_TOKEN" | docker login ghcr.io -u <github-user> --password-stdin
-docker pull ghcr.io/arenasluo/fastdecov:latest       # Docker picks amd64 or arm64 automatically
-docker run --rm -v "$PWD":/data ghcr.io/arenasluo/fastdecov:latest info
+docker pull ghcr.io/wluo123-scale/fastdecov:latest       # Docker picks amd64 or arm64 automatically
+docker run --rm -v "$PWD":/data ghcr.io/wluo123-scale/fastdecov:latest info
 ```
 
-**Settings.** `docker/fastdecov-docker` reads `FASTDECOV_IMAGE` (default `ghcr.io/arenasluo/fastdecov:latest`; for example `fastdecov` for a local build) and `DOCKER_CPUS` (passed as `--cpus`). Inside the image, `FASTDECOV_SOLVERS` is the directory of solver builds (`/opt/fastdecov/solvers`) and `FASTDECOV_CACHE` the file that caches the chosen level (`/tmp/fastdecov-solver.json`, rebuilt for every new container).
+**Settings.** `docker/fastdecov-docker` reads `FASTDECOV_IMAGE` (default `ghcr.io/wluo123-scale/fastdecov:latest`; for example `fastdecov` for a local build) and `DOCKER_CPUS` (passed as `--cpus`). Inside the image, `FASTDECOV_SOLVERS` is the directory of solver builds (`/opt/fastdecov/solvers`) and `FASTDECOV_CACHE` the file that caches the chosen level (`/tmp/fastdecov-solver.json`, rebuilt for every new container).
 
 #### Windows
 
