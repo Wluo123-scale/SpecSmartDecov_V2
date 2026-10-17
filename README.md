@@ -283,7 +283,7 @@ The number of components is therefore a result, not an input: 11 on the tent map
 fastdecov fit INPUT_DIR OUTPUT_DIR [--method v3|v4|v2|legacy] [--grid auto|none|ROWSxCOLS[s]] [--physics FILE]
               [--residual-limit FLOOR,K] [--snr-classes LOW,HIGH] [--no-residual-features] [--no-local-emitters]
               [--threads N] [--figures] [--png] [--name NAME] [--pattern '*.txt'] [--verbose]
-              [--seed-snr SNR] [--width-max NM] [--window MIN,MAX] [--min-sep NM]      # v4
+              [--seed-snr SNR] [--width-max NM] [--window MIN,MAX] [--min-sep NM] [--fast-select]      # v4
 fastdecov report OUTPUT_DIR            # print the emitter report of a finished run
 fastdecov physics [--template FILE]    # show / copy the physics parameters
 fastdecov info                         # version and solver status
@@ -302,6 +302,7 @@ python -m fastdecov ...                # same as `fastdecov`
 | `--width-max` | median seed FWHM | V4: largest emitter FWHM in nm. |
 | `--window` | strain half-range, 5 | V4: smallest and largest colour half-range of an emitter, in nm. |
 | `--min-sep` | learned | V4: smallest spacing between emitter reference centres, in nm. By default, the median within-band spacing of peaks and shoulders in the brightest 10 % of the spectra. |
+| `--fast-select` | off | V4: one width start (8 nm) instead of two in the model-selection fits on the seed spectra; the final fit keeps all starts. 1.7-1.8x faster on large maps. Identical emitters and fit quality on the Pillar 1 and Pillar 2 maps; on a 900-spectrum map it kept one extra borderline emitter (24 vs 23) with unchanged fit quality. Use it for quick exploration, the default for final results. |
 | `--threads` | all available | CPU threads. In a container with a CPU quota, set it (or `OMP_NUM_THREADS`) to the quota. |
 | `--figures`, `--png` | off | Write `dc/dc_<id>.tif` fit figures (data, fit, background, each ZPL, dashed sidebands, masked pixels, residual with the limit band); `--png` adds PNG copies. |
 
@@ -601,7 +602,7 @@ To reproduce 2.0.0 V3 results with this package, use `pair_rule="mean"`, `bg_flo
 
 | Version | Changes |
 |---|---|
-| **unreleased** | `--method v4`: a fixed set of map-wide emitters seeded from the brightest spectra, per-emitter colour windows (±3–5 nm, widened while the colour sits on an edge), emitter spacing learned from the brightest spectra. Runs on macOS (Homebrew GCC; libmvec only on Linux/glibc) and in Docker on any desktop (`amd64`/`arm64` image with one solver build per instruction-set level, checked at start-up); CPU count respects container quotas; `FASTDECOV_MARCH`/`FASTDECOV_CXXFLAGS`; prebuilt solvers are used without a compiler. V4 model selection batches its necessity refits into one solver call and reuses fits of a basis already fitted to a spectrum (byte-identical results; 1.2-1.7x faster at 16 threads) |
+| **unreleased** | `--method v4`: a fixed set of map-wide emitters seeded from the brightest spectra, per-emitter colour windows (±3–5 nm, widened while the colour sits on an edge), emitter spacing learned from the brightest spectra. Runs on macOS (Homebrew GCC; libmvec only on Linux/glibc) and in Docker on any desktop (`amd64`/`arm64` image with one solver build per instruction-set level, checked at start-up); CPU count respects container quotas; `FASTDECOV_MARCH`/`FASTDECOV_CXXFLAGS`; prebuilt solvers are used without a compiler. V4 model selection batches its necessity refits into one solver call and reuses fits of a basis already fitted to a spectrum (byte-identical results; 1.2-1.7x faster at 16 threads); opt-in `--fast-select` (`select_starts=(8.0,)`): one width start in model selection, a further 1.7-1.8x on large maps |
 | **2.5.0** | The cosmic-ray rule masks only isolated spikes, so line tops are no longer clipped. The local pass is on by default (`--no-local-emitters` to skip), with noise-based and unexplained-peak candidates, patch extension, per-spectrum completion, a necessity check and no broad fillers. Fit audit (`unexplained_peaks_nm`). Figures draw and label only the components present. |
 | **2.4.0** | Voigt line-shape report (Lorentzian width, extra Gaussian, ν_intrinsic); follow-up shortlist (`shortlist.md`); `g2_order`; `follow_up_gratings_meV` |
 | **2.3.0** | Residual-feature diagnostic: optical-phonon replica vs separate emitter, tested against the map; `optical_phonon_max_meV`; `replica of #N` labels |

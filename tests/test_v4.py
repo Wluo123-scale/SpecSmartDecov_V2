@@ -123,6 +123,11 @@ def test_cli_v4(tmp_path):
     b = json.loads((out / "basis.json").read_text())
     assert b["method"] == "v4" and b["K"] == 3 and "history" in b
     assert b["history"][0]["step"] == "seed" and b["min_sep_nm"] > 0
+    assert "select_starts" not in b
+    r = subprocess.run([sys.executable, "-m", "fastdecov", "fit", str(d), str(tmp_path / "fast"), "--method", "v4",
+                        "--grid", "4x6", "--threads", "2", "--fast-select"], capture_output=True, text=True)
+    assert r.returncode == 0, r.stderr
+    assert json.loads((tmp_path / "fast" / "basis.json").read_text())["select_starts"] == [8.0]
 
 
 def test_windows_clip_at_midpoints_and_reopen_when_a_neighbour_goes():
@@ -178,3 +183,17 @@ def test_spacing_is_learned_from_brightest_spectra():
     sep, st = basis4.learn_min_sep(xs, ys, snr, 8.0, {**basis4.OPTS4, "sep_min_spectra": 10, "sep_min_pairs": 5})
     assert sep is not None and 8.0 <= sep <= 10.0, st
     assert st["spectra"] == 10 and st["within_band_pairs"] >= 10
+
+
+def test_fast_select_is_opt_in_and_only_changes_selection_starts(monkeypatch):
+    xs, ys = strained_map(n=24)
+    m = api.SpectrumMap([f"{i + 1:04d}" for i in range(len(xs))], xs, ys)
+    seen = []
+    orig = basis4.fit_many
+    monkeypatch.setattr(basis4, "fit_many", lambda *a, **k: seen.append(tuple(a[3])) or orig(*a, **k))
+    base = api.fit_map(m, "v4", threads=2, grid=None)
+    assert set(seen) == {(8.0, 3.0)} and "select_starts" not in base.extra
+    seen.clear()
+    fast = api.fit_map(m, "v4", threads=2, grid=None, select_starts=(8.0,))
+    assert set(seen) == {(8.0,)} and fast.extra["select_starts"] == [8.0]
+    assert fast.K == base.K == 3

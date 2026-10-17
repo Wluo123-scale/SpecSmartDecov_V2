@@ -36,6 +36,13 @@ OPTS4 = dict(seed_snr=300.0, min_seeds=20, width_max_nm=None, min_seed_spectra=3
              window_margin_nm=0.5, widen_edge_frac=0.2, widen_step_nm=1.0, widen_rounds=3,
              sep_top_frac=0.10, sep_min_spectra=20, sep_smooth_x_width=0.5, sep_height_mad=3.0, sep_band_x_width=3.0,
              sep_min_pairs=10)
+# Opt-in, not in OPTS4 so default runs record the same options: select_starts - width starts of the model-selection
+# fits (seeds; default: starts). (8.0,) is 1.7-1.8x faster on large maps; it may keep or drop a borderline emitter
+# differently. The final fit always uses final_starts.
+
+
+def _sel_starts(o):
+    return tuple(o["select_starts"]) if o.get("select_starts") else o["starts"]
 
 
 def components(x, y, smooth_nm, height_mad, edge_nm=5.0):
@@ -225,8 +232,8 @@ def fit_many(xm, ym, jobs, starts, o, workers=None, cache=None):
 
 def _seed_fit(xm, ym, W, o, wmin, wmax):
     if o.get("_cache") is None:                       # no cache (direct callers): plain fit_set
-        return B3.fit_set(xm, ym, W.basis(wmin, wmax), o["starts"], o, o.get("_workers"))
-    return fit_many(xm, ym, [(np.arange(len(xm)), W.basis(wmin, wmax))], o["starts"], o, o.get("_workers"), o.get("_cache"))[0]
+        return B3.fit_set(xm, ym, W.basis(wmin, wmax), _sel_starts(o), o, o.get("_workers"))
+    return fit_many(xm, ym, [(np.arange(len(xm)), W.basis(wmin, wmax))], _sel_starts(o), o, o.get("_workers"), o.get("_cache"))[0]
 
 
 def _necessity(fit, fT, core, o):
@@ -240,7 +247,7 @@ def _necessary_many(xm, ym, W, fit, ks, o, wmin, wmax):
     """_necessary for several emitters, their refits batched in one fit_many call (same results as one by one)."""
     cores = {k: np.flatnonzero(fit.share[:, k] >= 0.02) for k in ks}
     run = [k for k in ks if cores[k].size >= o["min_seed_spectra"]]
-    fits = dict(zip(run, fit_many(xm, ym, [(cores[k], W.without(k).basis(wmin, wmax)) for k in run], o["starts"], o,
+    fits = dict(zip(run, fit_many(xm, ym, [(cores[k], W.without(k).basis(wmin, wmax)) for k in run], _sel_starts(o), o,
                                   o.get("_workers"), o.get("_cache"))))
     return {k: (_necessity(fit, fits[k], cores[k], o) if k in fits else (False, cores[k].size, 0.0)) for k in ks}
 
@@ -265,7 +272,7 @@ def _prune(xm, ym, W, fit, o, hist, wmin, wmax):
             chunk, probs = [], 0
             while i < len(order) and (not chunk or probs < 6 * threads):
                 k = order[i]; i += 1; chunk.append(k)
-                probs += int(np.sum(fit.share[:, k] >= 0.02)) * len(o["starts"])
+                probs += int(np.sum(fit.share[:, k] >= 0.02)) * len(_sel_starts(o))
             res = _necessary_many(xm, ym, W, fit, chunk, o, wmin, wmax)
             for k in chunk:
                 ok, n_core, need = res[k]
