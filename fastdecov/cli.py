@@ -79,7 +79,8 @@ def cmd_fit(a):
     threads = a.threads or hw.cpu_count()
     print(f"fastdecov {__version__}: {len(m)} spectra from {a.input}, method {a.method}, {threads} threads", flush=True)
     v4 = dict(seed_snr=a.seed_snr, width_max_nm=a.width_max, min_sep_nm=a.min_sep,
-              window_min_nm=a.window[0] if a.window else None, window_max_nm=a.window[1] if a.window else None) \
+              window_min_nm=a.window[0] if a.window else None, window_max_nm=a.window[1] if a.window else None,
+              select_starts=(8.0,) if a.fast_select else None) \
         if a.method == "v4" else {}
     res = api.fit_map(m, a.method, phys, threads, verbose=a.verbose, local=a.local_emitters, grid=g, **v4)
     t_fit = time.perf_counter()
@@ -152,6 +153,9 @@ def main(argv=None):
     f.add_argument("--min-sep", type=_positive, default=None, metavar="NM",
                    help="v4: smallest spacing between emitter reference centres in nm (default: learned from the "
                         "brightest spectra, the median within-band spacing of their peaks and shoulders)")
+    f.add_argument("--fast-select", action="store_true",
+                   help="v4: one width start instead of two in the model-selection fits (1.7-1.8x faster on large maps; "
+                        "a borderline emitter may be kept or dropped differently; the final fit is unchanged)")
     f.add_argument("--grid", type=_grid, default="auto",
                    help="map shape for emitter maps: auto (default; from file names or spatial continuity), none, or "
                         "ROWSxCOLS in file order (append s for a serpentine scan)")

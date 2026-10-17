@@ -83,7 +83,8 @@ def fit_map(m, method="v3", phys=None, threads=None, verbose=False, local=True, 
     (basis3.local_emitters), e.g. sharp lines on band-edge emission that map-wide discovery dilutes; `grid`
     ("auto", None, (rows, cols[, serpentine]) or a detect_grid dict) defines which spectra are neighbours.
     v4 (basis4): a fixed set of map-wide emitters seeded from the brightest spectra; `opts` may set seed_snr,
-    width_max_nm, window_min_nm, window_max_nm and min_sep_nm (see basis4.OPTS4)."""
+    width_max_nm, window_min_nm, window_max_nm and min_sep_nm (see basis4.OPTS4), and select_starts (opt-in faster
+    model selection, e.g. (8.0,))."""
     if method not in METHODS:
         raise ValueError(f"method must be one of {METHODS}")
     phys = phys if isinstance(phys, dict) else physics.load(phys)
@@ -110,6 +111,8 @@ def fit_map(m, method="v3", phys=None, threads=None, verbose=False, local=True, 
                      history=rep["history"], n_seeds=len(rep["seeds"]), seed_snr=rep["options"]["seed_snr"],
                      width_max_nm=rep["width_max_nm"], window_nm=rep["window_nm"], min_sep_nm=rep["min_sep_nm"],
                      edge_fraction=rep["edge_fraction"], n_emitting=rep["n_emitting"], reference_centers=b.centers.tolist())
+        if rep["options"].get("select_starts"):                  # recorded only when the opt-in is used
+            extra["select_starts"] = [float(v) for v in rep["options"]["select_starts"]]
         return Result("v4", list(m.ids), xs, ys, keeps, fit.params, fit.sse, b.psb.copy(), extra)
     if method == "v2":
         from . import pipeline
