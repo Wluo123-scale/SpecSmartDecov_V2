@@ -352,7 +352,7 @@ def main(argv: list[str] | None = None) -> int:
     sub = parser.add_subparsers(dest="command", required=True)
     run = sub.add_parser("run", help="probe models (makes API calls unless --dry-run)")
     run.add_argument("--repo", default=str(REPO_ROOT), help="checkout to probe (default: the one containing this tool)")
-    run.add_argument("--repo-name", default="arenasluo/SpecSmartDecov_V2")
+    run.add_argument("--repo-name", default="Wluo123-scale/SpecSmartDecov_V2")
     run.add_argument("--model", action="append", help="model name at the endpoint; repeatable")
     run.add_argument("--models-file", help="one model name per line; # comments allowed")
     run.add_argument("--base-url", help="OpenAI-compatible base URL (default: $PROBE_BASE_URL)")

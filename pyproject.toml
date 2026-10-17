@@ -24,7 +24,7 @@ test = ["pytest"]
 fastdecov = "fastdecov.cli:main"
 
 [project.urls]
-Homepage = "https://github.com/arenasluo/SpecSmartDecov_V2"
+Homepage = "https://github.com/Wluo123-scale/SpecSmartDecov_V2"
 "Original MATLAB code" = "https://github.com/arenasluo/SpecSmartDecov"
 
 [tool.setuptools]
